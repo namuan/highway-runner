@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🚗 Tunnel Runner</title>
+<title>🚗 Scenic Route</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -196,19 +196,6 @@
     margin-top: 4px;
   }
 
-  /* --- Tunnel end warning --- */
-  #tunnel-warning {
-    position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-    background: rgba(255,40,0,0.85); backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,80,40,0.5); border-radius: 10px;
-    padding: 8px 20px; font-size: 14px; font-weight: 700;
-    color: #fff; z-index: 20; white-space: nowrap;
-    display: none; text-align: center;
-    animation: warnPulse 0.5s ease-in-out infinite alternate;
-  }
-  #tunnel-warning.active { display: block; }
-  @keyframes warnPulse { from { background: rgba(255,40,0,0.85); } to { background: rgba(255,60,20,0.9); } }
-
   /* --- Game Over overlay --- */
   #game-over {
     position: fixed;
@@ -320,11 +307,9 @@
 <body>
 
 <div id="ui">
-  <!-- Tunnel end warning -->
-  <div id="tunnel-warning">⚠ Tunnel end ahead — Slow down! Congestion ahead</div>
   <!-- Top bar -->
   <div id="top-bar">
-    <span class="title">🏎️ Tunnel Runner</span>
+    <span class="title">🏎️ Scenic Route</span>
     <span class="stat">📏 <span class="value" id="score">0</span>m</span>
     <span class="stat">🚗 <span class="value" id="car-count">0</span></span>
   </div>
@@ -408,10 +393,7 @@ const CONFIG = {
   playerBrake: 22,
   playerMaxSpeed: 120,
   minSafeSpeed: 10,    // mph threshold before underspeed penalty
-  // Tunnel config
-  tunnelHeight: 5.5,
-  tunnelLightSpacing: 5.0,
-  tunnelRibSpacing: 8.0,
+  // Tunnel config (unused — open scenery)
 };
 
 // ============================================================
@@ -419,7 +401,7 @@ const CONFIG = {
 // ============================================================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.FogExp2(0x87ceeb, 0.001);
+scene.fog = new THREE.Fog(0x87ceeb, 100, 800);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1200);
 camera.position.set(0, 75, 0.01);
@@ -447,34 +429,29 @@ const worldGroup = new THREE.Group();
 scene.add(worldGroup);
 
 // ============================================================
-//  TUNNEL LIGHTING
+//  OUTDOOR LIGHTING
 // ============================================================
-// Bright ambient — daytime tunnel interior
-const ambient = new THREE.AmbientLight(0xffffee, 1.5);
+// Sky ambient — bright outdoor feel
+const ambient = new THREE.AmbientLight(0xaaccff, 0.8);
 scene.add(ambient);
 
-// Warm directional light simulating tunnel lighting wash
-const tunnelLight = new THREE.DirectionalLight(0xfff5e0, 1.8);
-tunnelLight.position.set(0, 14, 0);
-tunnelLight.castShadow = true;
-tunnelLight.shadow.mapSize.width = 1024;
-tunnelLight.shadow.mapSize.height = 1024;
-tunnelLight.shadow.camera.near = 1;
-tunnelLight.shadow.camera.far = 200;
-tunnelLight.shadow.camera.left = -80;
-tunnelLight.shadow.camera.right = 80;
-tunnelLight.shadow.camera.top = 80;
-tunnelLight.shadow.camera.bottom = -80;
-scene.add(tunnelLight);
+// Sun directional light
+const sunLight = new THREE.DirectionalLight(0xfff8e7, 2.5);
+sunLight.position.set(100, 60, 40);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 1;
+sunLight.shadow.camera.far = 300;
+sunLight.shadow.camera.left = -100;
+sunLight.shadow.camera.right = 100;
+sunLight.shadow.camera.top = 100;
+sunLight.shadow.camera.bottom = -100;
+scene.add(sunLight);
 
-// Bright fill lights
-const fillFront = new THREE.DirectionalLight(0xaaccff, 0.5);
-fillFront.position.set(0, 2, 30);
-scene.add(fillFront);
-
-const fillBack = new THREE.DirectionalLight(0xffccaa, 0.3);
-fillBack.position.set(0, 2, -30);
-scene.add(fillBack);
+// Sky fill (blue-ish from above)
+const skyFill = new THREE.AmbientLight(0x8899cc, 0.4);
+scene.add(skyFill);
 
 // Road surface (dark asphalt)
 const roadBaseMat = new THREE.MeshStandardMaterial({
@@ -716,174 +693,116 @@ finalizeLanes();
 // ============================================================
 //  TUNNEL ENVIRONMENT — full-length enclosed tunnel
 // ============================================================
-function buildFullTunnel() {
+function buildScenicRoute() {
   const length = CONFIG.roadLength;
   const halfW = CONFIG.roadHalfWidth;
-  const height = CONFIG.tunnelHeight;
-  const wallThick = 0.4;
-  const ceilThick = 0.35;
-  const tunnelHalfW = halfW + 1.8; // wall-to-wall half width
-  const midX = 0;
 
-  // ---- Materials ----
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: 0xaaaacc, roughness: 0.7, metalness: 0.05,
-  });
-  const ribMat = new THREE.MeshStandardMaterial({
-    color: 0x9999aa, roughness: 0.5, metalness: 0.1,
-  });
-  const baseMat = new THREE.MeshStandardMaterial({
-    color: 0x777777, roughness: 0.85,
-  });
-  const stripeMat = new THREE.MeshStandardMaterial({
-    color: 0x999999, roughness: 0.5,
-  });
-  const emergencyMat = new THREE.MeshStandardMaterial({
-    color: 0x00ff44, emissive: 0x00ff44,
-    emissiveIntensity: 0.4, roughness: 0.2,
-  });
+  // ---- Guardrails along road edges ----
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.6 });
+  const railPostsMat = new THREE.MeshStandardMaterial({ color: 0x886644, roughness: 0.7 });
+  const postSpacing = 3;
 
-  // ---- Main side walls ----
   for (const side of [-1, 1]) {
-    const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(length, height, wallThick),
-      wallMat
-    );
-    wall.position.set(midX, height / 2, side * tunnelHalfW);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
-    worldGroup.add(wall);
+    for (let x = -length / 2; x < length / 2; x += postSpacing) {
+      // Post
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.12), railPostsMat);
+      post.position.set(x, 0.45, side * (halfW + 0.7));
+      post.castShadow = true;
+      worldGroup.add(post);
 
-    // Dark base strip (bottom 0.6 units)
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(length, 0.6, wallThick + 0.02),
-      baseMat
-    );
-    base.position.set(midX, 0.3, side * tunnelHalfW);
-    worldGroup.add(base);
-
-    // Horizontal wall stripes every 8 units (depth reference)
-    for (let x = -length / 2 + 2; x < length / 2 - 2; x += 8) {
-      // Stripe at 1.5m height
-      const s1 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.08, 0.05),
-        stripeMat
-      );
-      s1.position.set(x, 1.5, side * (tunnelHalfW + 0.01));
-      worldGroup.add(s1);
-
-      // Stripe at 3.0m height
-      const s2 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.08, 0.05),
-        stripeMat
-      );
-      s2.position.set(x, 3.0, side * (tunnelHalfW + 0.01));
-      worldGroup.add(s2);
+      // Rail bar
+      const railLen = postSpacing;
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(railLen, 0.08, 0.1), railMat);
+      rail.position.set(x, 0.85, side * (halfW + 0.7));
+      worldGroup.add(rail);
     }
   }
 
-  // ---- Ceiling ---- (removed — open-top view)
+  // ---- Trees along both sides ----
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.8 });
+  const foliageColors = [0x2d5a1e, 0x3a7a25, 0x1f4f0f, 0x4a8c2a, 0x226618];
+  const treeInterval = 12;
 
-  // ---- Darken road inside tunnel (already dark, but add subtle strip) ----
-  const roadDark = new THREE.Mesh(
-    new THREE.PlaneGeometry(length, CONFIG.roadHalfWidth * 2 + 0.5),
-    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 })
-  );
-  roadDark.rotation.x = -Math.PI / 2;
-  roadDark.position.set(midX, 0.005, 0);
-  worldGroup.add(roadDark);
+  for (let x = -length / 2; x < length / 2; x += treeInterval) {
+    // Offset trees from exact grid for natural look
+    const jitterX = (Math.random() - 0.5) * 4;
 
-  // ---- Tunnel ribs / arch frames (every ribSpacing) ----
-  const ribSpacing = CONFIG.tunnelRibSpacing;
-  for (let x = -length / 2 + ribSpacing / 2; x < length / 2; x += ribSpacing) {
-    // Left pillar
-    const pillar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.25, height, 0.25),
-      ribMat
-    );
-    pillar.position.set(x, height / 2, -tunnelHalfW + 0.2);
-    pillar.castShadow = true;
-    worldGroup.add(pillar);
-
-    // Right pillar
-    const pillarR = new THREE.Mesh(
-      new THREE.BoxGeometry(0.25, height, 0.25),
-      ribMat
-    );
-    pillarR.position.set(x, height / 2, tunnelHalfW - 0.2);
-    pillarR.castShadow = true;
-    worldGroup.add(pillarR);
-  }
-
-  // ---- Tunnel lights ---- (removed — ceiling is open)
-
-  // ---- Emergency exits & signs (periodically on walls) ----
-  for (let x = -length / 2 + 15; x < length / 2 - 15; x += 40) {
     for (const side of [-1, 1]) {
-      // Emergency sign (green glowing panel)
-      const sign = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.6, 0.4),
-        emergencyMat
-      );
-      sign.position.set(x, 2.8, side * (tunnelHalfW + 0.02));
-      worldGroup.add(sign);
+      const distFromRoad = 3.5 + Math.random() * 6;
+      const z = side * (halfW + distFromRoad);
+      const treeH = 1.5 + Math.random() * 3;
 
-      // Small "exit" box below
-      const exitBox = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 1.0, 0.1),
-        new THREE.MeshStandardMaterial({ color: 0x00aa33, roughness: 0.5 })
+      // Trunk
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.2, treeH * 0.5, 6),
+        trunkMat
       );
-      exitBox.position.set(x, 1.2, side * (tunnelHalfW + 0.05));
-      worldGroup.add(exitBox);
-    }
-  }
+      trunk.position.set(x + jitterX, treeH * 0.25, z);
+      trunk.castShadow = true;
+      worldGroup.add(trunk);
 
-  // ---- Tunnel extensions — detailed walls extending beyond active area ----
-  const extLength = 2000;
-  for (const side of [-1, 1]) {
-    // Extended road base
-    const extRoadBase = new THREE.Mesh(
-      new THREE.PlaneGeometry(extLength, CONFIG.roadHalfWidth * 2 + 3),
-      new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.95 })
-    );
-    extRoadBase.rotation.x = -Math.PI / 2;
-    extRoadBase.position.set(side * (length / 2 + extLength / 2), -0.04, 0);
-    extRoadBase.receiveShadow = true;
-    worldGroup.add(extRoadBase);
-    // Extended side walls with details
-    for (const wSide of [-1, 1]) {
-      const extWall = new THREE.Mesh(new THREE.BoxGeometry(extLength, height, wallThick), wallMat);
-      extWall.position.set(side * (length / 2 + extLength / 2), height / 2, wSide * tunnelHalfW);
-      extWall.castShadow = true;
-      extWall.receiveShadow = true;
-      worldGroup.add(extWall);
-      // Base strip
-      const extBase = new THREE.Mesh(
-        new THREE.BoxGeometry(extLength, 0.6, wallThick + 0.02),
-        baseMat
-      );
-      extBase.position.set(side * (length / 2 + extLength / 2), 0.3, wSide * tunnelHalfW);
-      worldGroup.add(extBase);
-      // Horizontal stripes every 8m (depth reference)
-      const extStart = side > 0 ? length / 2 : -(length / 2 + extLength);
-      const extEnd = side > 0 ? length / 2 + extLength : -length / 2;
-      for (let x = extStart + 2; x < extEnd - 2; x += 8) {
-        for (const h of [1.5, 3.0]) {
-          const stripe = new THREE.Mesh(
-            new THREE.BoxGeometry(0.6, 0.08, 0.05),
-            stripeMat
-          );
-          stripe.position.set(x, h, wSide * (tunnelHalfW + 0.01));
-          worldGroup.add(stripe);
-        }
+      // Canopy layers
+      for (let layer = 0; layer < 3; layer++) {
+        const coneH = treeH * 0.35;
+        const coneR = treeH * (0.35 - layer * 0.08);
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(coneR, coneH, 7),
+          new THREE.MeshStandardMaterial({
+            color: foliageColors[Math.floor(Math.random() * foliageColors.length)],
+            roughness: 0.7,
+          })
+        );
+        cone.position.set(x + jitterX, treeH * 0.45 + layer * coneH * 0.55, z);
+        cone.castShadow = true;
+        worldGroup.add(cone);
       }
     }
   }
 
-  console.log('🏗️  Open-top tunnel built: length=' + length + 'm, height=' + height + 'm');
+  // ---- Distant mountains ----
+  const mountainMatDark = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+  const mountainMatSnow = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.7 });
+  for (let i = 0; i < 16; i++) {
+    const mx = (Math.random() - 0.5) * length;
+    const mz = (Math.random() > 0.5 ? 1 : -1) * (20 + Math.random() * 40);
+    const mh = 15 + Math.random() * 40;
+    const mr = mh * 0.6;
+    const mountain = new THREE.Mesh(
+      new THREE.ConeGeometry(mr, mh, 8),
+      mountainMatDark
+    );
+    mountain.position.set(mx, -mh * 0.3, mz);
+    worldGroup.add(mountain);
+
+    // Snow cap on taller ones
+    if (mh > 35) {
+      const snow = new THREE.Mesh(
+        new THREE.ConeGeometry(mr * 0.3, mh * 0.25, 8),
+        mountainMatSnow
+      );
+      snow.position.set(mx, mh * 0.35, mz);
+      worldGroup.add(snow);
+    }
+  }
+
+  // ---- Small bushes / scrub ----
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x3a6b20, roughness: 0.8 });
+  for (let i = 0; i < 80; i++) {
+    const bx = (Math.random() - 0.5) * length;
+    const bz = (Math.random() > 0.5 ? 1 : -1) * (halfW + 1.5 + Math.random() * 15);
+    const bush = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3 + Math.random() * 0.5, 5, 4),
+      bushMat
+    );
+    bush.position.set(bx, 0.2, bz);
+    bush.scale.y = 0.6;
+    worldGroup.add(bush);
+  }
+
+  console.log('🌲 Scenic route built: length=' + length + 'm, trees, guardrails, mountains');
 }
 
-buildFullTunnel();
+buildScenicRoute();
 
 // ---- Checkpoint gates at wrap points ----
 const gateMat = new THREE.MeshStandardMaterial({
@@ -1159,22 +1078,20 @@ function toggleTimeOfDay() {
   document.getElementById('btn-time').textContent = timeOfDay === 'day' ? '🌙 Night' : '☀️ Day';
   if (timeOfDay === 'night') {
     scene.background = new THREE.Color(0x020208);
-    scene.fog = new THREE.FogExp2(0x020208, 0.006);
-    ambient.intensity = 0.3;
+    scene.fog = new THREE.Fog(0x020208, 60, 500);
+    ambient.intensity = 0.25;
     ambient.color.setHex(0x334466);
-    tunnelLight.intensity = 0.4;
-    tunnelLight.color.setHex(0xaaccff);
-    fillFront.intensity = 0.15;
-    fillBack.intensity = 0.1;
+    sunLight.intensity = 0.5;
+    sunLight.color.setHex(0xaaccff);
+    skyFill.intensity = 0.15;
   } else {
     scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.FogExp2(0x87ceeb, 0.001);
-    ambient.intensity = 1.5;
-    ambient.color.setHex(0xffffee);
-    tunnelLight.intensity = 1.8;
-    tunnelLight.color.setHex(0xfff5e0);
-    fillFront.intensity = 0.5;
-    fillBack.intensity = 0.3;
+    scene.fog = new THREE.Fog(0x87ceeb, 100, 800);
+    ambient.intensity = 0.8;
+    ambient.color.setHex(0xaaccff);
+    sunLight.intensity = 2.5;
+    sunLight.color.setHex(0xfff8e7);
+    skyFill.intensity = 0.4;
   }
 }
 document.getElementById('btn-time').addEventListener('click', toggleTimeOfDay);
@@ -1346,18 +1263,6 @@ function updatePlayer(dt) {
   const OVERSPEED_LIMIT = 70;
   if (mph > OVERSPEED_LIMIT) {
     score = Math.max(0, score - (mph - OVERSPEED_LIMIT) * dt * 0.5);
-  }
-
-  // Tunnel end warning — alert when approaching the wrap point
-  const distToEnd = playerCar.lane.length - playerCar.progress;
-  const WARN_DISTANCE = 400;
-  const warningEl = document.getElementById('tunnel-warning');
-  if (distToEnd < WARN_DISTANCE) {
-    const metersLeft = Math.round(distToEnd);
-    warningEl.textContent = `⚠ Tunnel end in ${metersLeft}m — Slow down! Congestion ahead`;
-    warningEl.classList.add('active');
-  } else {
-    warningEl.classList.remove('active');
   }
 
   // Brake lights
@@ -1608,7 +1513,7 @@ function updateCars(dt, simSpeed) {
 
     let desired = car.targetSpeed;
 
-    // 0. Congestion near tunnel wrap point — cars slow down approaching the end
+    // 0. Congestion near road wrap point — cars slow down approaching the end
     const distToWrap = lane.length - car.progress;
     if (distToWrap < 350) {
       const congestionFactor = Math.max(0.3, distToWrap / 350);
@@ -2028,7 +1933,7 @@ document.getElementById('btn-reset').addEventListener('click', restartGame);
 
 animate(0);
 
-console.log('🏎️ Tunnel Runner ready!');
+console.log('🏎️ Scenic Route ready!');
 console.log(`🚗 Player car #${playerCar.id}, ${cars.length} total cars, ${laneDefs.length} lanes`);
 console.log(`👁️ View mode: ${viewMode} | Camera pos: (${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}) | Player at: (${playerCar.mesh.position.x.toFixed(0)}, ${playerCar.mesh.position.y.toFixed(1)}, ${playerCar.mesh.position.z.toFixed(1)})`);
 </script>
