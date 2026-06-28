@@ -908,7 +908,7 @@ document.addEventListener('keydown', (e) => {
 function toggleView() {
   viewMode = viewMode === 'top' ? 'fpv' : 'top';
   document.getElementById('btn-view').textContent = viewMode === 'top' ? '🎥 FPV' : '🔝 Top';
-  controls.enabled = viewMode === 'fpv';
+  controls.enabled = viewMode !== 'fpv';
   if (viewMode === 'top' && playerCar) {
     // Position the camera behind and above the player
     const pos = playerCar.mesh.position.clone();
