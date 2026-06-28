@@ -799,7 +799,42 @@ function buildScenicRoute() {
     worldGroup.add(bush);
   }
 
-  console.log('🌲 Scenic route built: length=' + length + 'm, trees, guardrails, mountains');
+  // ---- Plains / ground planes on both sides ----
+  const plainMat = new THREE.MeshStandardMaterial({ color: 0x4a7a2e, roughness: 0.9 });
+  const plainWidth = 60;
+  for (const side of [-1, 1]) {
+    const plain = new THREE.Mesh(
+      new THREE.PlaneGeometry(length, plainWidth),
+      plainMat
+    );
+    plain.rotation.x = -Math.PI / 2;
+    plain.position.set(0, -0.1, side * (halfW + plainWidth / 2 + 1));
+    plain.receiveShadow = true;
+    worldGroup.add(plain);
+  }
+
+  // ---- Mounds / gentle hills ----
+  const moundColors = [0x5a8a3a, 0x4a7a2e, 0x6a9a44, 0x3d6b22];
+  for (let i = 0; i < 40; i++) {
+    const mx = (Math.random() - 0.5) * length;
+    const mside = Math.random() > 0.5 ? 1 : -1;
+    const mz = mside * (halfW + 5 + Math.random() * 55);
+    const mh = 1 + Math.random() * 4;
+    const mr = mh * 1.5 + Math.random() * 3;
+    const mound = new THREE.Mesh(
+      new THREE.SphereGeometry(mr, 12, 8, 0, Math.PI * 2, 0, Math.PI / 3),
+      new THREE.MeshStandardMaterial({
+        color: moundColors[Math.floor(Math.random() * moundColors.length)],
+        roughness: 0.8,
+      })
+    );
+    mound.position.set(mx, -mh * 0.15, mz);
+    mound.scale.y = 0.4;
+    mound.receiveShadow = true;
+    worldGroup.add(mound);
+  }
+
+  console.log('🌲 Scenic route built: length=' + length + 'm, trees, guardrails, mountains, plains, mounds');
 }
 
 buildScenicRoute();
