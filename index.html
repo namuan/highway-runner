@@ -230,6 +230,32 @@
     margin-top: 8px;
   }
 
+  /* --- Speed lines overlay --- */
+  #speed-lines {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 5; opacity: 0;
+    transition: opacity 0.3s;
+    overflow: hidden;
+  }
+  #speed-lines.active { opacity: 1; }
+  #speed-lines .line {
+    position: absolute; top: 0; height: 100%; width: 2px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.15), transparent);
+    animation: speedStreak linear infinite;
+  }
+  @keyframes speedStreak {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(100vh); }
+  }
+
+  /* --- Wrap checkpoint flash --- */
+  #checkpoint-flash {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 6;
+    background: radial-gradient(ellipse at center, rgba(0,200,255,0.15) 0%, transparent 60%);
+    opacity: 0; transition: opacity 0.15s;
+  }
+
   /* --- Lane indicator --- */
   #lane-indicator {
     position: fixed;
@@ -289,6 +315,11 @@
     <div class="label">mph</div>
     <div class="overspeed-label" id="overspeed-label">⚠ OVERSPEED</div>
   </div>
+
+  <!-- Speed lines overlay -->
+  <div id="speed-lines"></div>
+  <!-- Checkpoint flash -->
+  <div id="checkpoint-flash"></div>
 
   <!-- Lane indicator -->
   <div id="lane-indicator">
@@ -727,6 +758,33 @@ function buildFullTunnel() {
 }
 
 buildFullTunnel();
+
+// ---- Checkpoint gates at wrap points ----
+const gateMat = new THREE.MeshStandardMaterial({
+  color: 0x00ccff, emissive: 0x00aadd, emissiveIntensity: 0.6,
+  roughness: 0.2, transparent: true, opacity: 0.7
+});
+const gateHeight = 4;
+laneDefs.forEach(lane => {
+  // Gate at wrap point (200m before lane end)
+  const gateX = lane.end.x + lane.dirVec.x * (-200); // lane.dir.x = -1, so +200 from end
+  const gateZ = lane.start.z;
+  
+  // Arch frame — left pillar
+  const pLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, gateHeight, 0.2), gateMat);
+  pLeft.position.set(gateX, gateHeight / 2, gateZ - 1.8);
+  worldGroup.add(pLeft);
+  
+  // Right pillar
+  const pRight = new THREE.Mesh(new THREE.BoxGeometry(0.2, gateHeight, 0.2), gateMat);
+  pRight.position.set(gateX, gateHeight / 2, gateZ + 1.8);
+  worldGroup.add(pRight);
+  
+  // Top beam
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 3.8), gateMat);
+  top.position.set(gateX, gateHeight, gateZ);
+  worldGroup.add(top);
+});
 
 // ============================================================
 //  CAR MODEL
@@ -1179,8 +1237,44 @@ function updatePlayer(dt) {
   const dist = playerCar.mesh.position.distanceTo(targetPos);
   if (dist > 100) {
     playerCar.mesh.position.copy(targetPos);  // instant snap on wrap
+    // Checkpoint flash
+    const flash = document.getElementById('checkpoint-flash');
+    flash.style.opacity = '1';
+    setTimeout(() => { flash.style.opacity = '0'; }, 200);
   } else {
     playerCar.mesh.position.lerp(targetPos, 0.25);  // smooth lane changes
+  }
+
+  // Dynamic FOV based on speed
+  const baseFOV = 50;
+  const speedFOV = baseFOV + Math.min(mph * 0.15, 15); // up to +15° FOV
+  camera.fov += (speedFOV - camera.fov) * 0.1;
+  camera.updateProjectionMatrix();
+
+  // Speed lines — more lines at higher speed
+  const linesContainer = document.getElementById('speed-lines');
+  const targetLines = Math.floor(mph / 8); // 1 line per 8 mph, max ~25 lines
+  const clampedLines = Math.max(0, Math.min(targetLines, 25));
+  if (clampedLines > 0) {
+    linesContainer.classList.add('active');
+  } else {
+    linesContainer.classList.remove('active');
+  }
+  // Add/remove lines to match target
+  const currentLines = linesContainer.children.length;
+  if (currentLines < clampedLines) {
+    for (let i = currentLines; i < clampedLines; i++) {
+      const line = document.createElement('div');
+      line.className = 'line';
+      line.style.left = Math.random() * 100 + '%';
+      line.style.animationDuration = (0.5 + Math.random() * 1.5) + 's';
+      line.style.opacity = 0.3 + Math.random() * 0.5;
+      linesContainer.appendChild(line);
+    }
+  } else if (currentLines > clampedLines) {
+    while (linesContainer.children.length > clampedLines) {
+      linesContainer.removeChild(linesContainer.lastChild);
+    }
   }
 
   const forward = new THREE.Vector3(0, 0, 1);
@@ -1260,6 +1354,12 @@ function restartGame() {
   document.getElementById('mph-display').className = 'mph';
   document.getElementById('overspeed-label').classList.remove('active');
   document.getElementById('score').textContent = '0';
+
+  // Reset effects
+  document.getElementById('speed-lines').innerHTML = '';
+  document.getElementById('speed-lines').classList.remove('active');
+  camera.fov = 50;
+  camera.updateProjectionMatrix();
 
   // Create player and initial traffic
   playerCar = createPlayerCar();
