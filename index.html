@@ -1017,6 +1017,7 @@ function toggleView() {
   viewMode = viewMode === 'top' ? 'fpv' : 'top';
   document.getElementById('btn-view').textContent = viewMode === 'top' ? '🔝 Top' : '🎥 FPV';
   controls.enabled = (viewMode === 'fpv');
+  console.log(`👁️ Toggled view → ${viewMode} | controls: ${controls.enabled ? 'enabled' : 'disabled'}`);
   if (viewMode === 'top' && playerCar) {
     const pos = playerCar.mesh.position.clone();
     const dir = playerCar.lane.dirVec.clone();
@@ -1778,6 +1779,7 @@ animate(0);
 
 console.log('🏎️ Tunnel Runner ready!');
 console.log(`🚗 Player car #${playerCar.id}, ${cars.length} total cars, ${laneDefs.length} lanes`);
+console.log(`👁️ View mode: ${viewMode} | Camera pos: (${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}) | Player at: (${playerCar.mesh.position.x.toFixed(0)}, ${playerCar.mesh.position.y.toFixed(1)}, ${playerCar.mesh.position.z.toFixed(1)})`);
 </script>
 </body>
 </html>
