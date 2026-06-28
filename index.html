@@ -307,6 +307,7 @@
   <div id="controls">
     <span style="color:#888;font-size:11px">W/↑ Accel &nbsp; S/↓ Brake &nbsp; A/← D/→ Lane &nbsp; <b>V</b> View &nbsp; <b>R</b> Reverse</span>
     <button class="btn" id="btn-view">🎥 FPV</button>
+    <button class="btn" id="btn-time">🌙 Night</button>
     <button class="btn" id="btn-reset">⟳ Reset</button>
   </div>
 </div>
@@ -451,6 +452,7 @@ let gameOver = false;
 let score = 0;
 let lastProgress = 0;
 let viewMode = 'top'; // 'top' or 'fpv'
+let timeOfDay = 'day';  // 'day' or 'night'
 let chaseDistance = 3;
 // Keyboard state
 const keys = { w: false, s: false, a: false, d: false, arrowup: false, arrowdown: false, arrowleft: false, arrowright: false };
@@ -970,6 +972,38 @@ document.addEventListener('keydown', (e) => {
   }
 });
 document.getElementById('btn-view').addEventListener('click', toggleView);
+
+// Day/Night toggle
+function toggleTimeOfDay() {
+  timeOfDay = timeOfDay === 'day' ? 'night' : 'day';
+  document.getElementById('btn-time').textContent = timeOfDay === 'day' ? '🌙 Night' : '☀️ Day';
+  if (timeOfDay === 'night') {
+    scene.background = new THREE.Color(0x020208);
+    scene.fog = new THREE.FogExp2(0x020208, 0.006);
+    ambient.intensity = 0.3;
+    ambient.color.setHex(0x334466);
+    tunnelLight.intensity = 0.4;
+    tunnelLight.color.setHex(0xaaccff);
+    fillFront.intensity = 0.15;
+    fillBack.intensity = 0.1;
+  } else {
+    scene.background = new THREE.Color(0x050508);
+    scene.fog = new THREE.FogExp2(0x050508, 0.005);
+    ambient.intensity = 1.0;
+    ambient.color.setHex(0xaaccff);
+    tunnelLight.intensity = 1.2;
+    tunnelLight.color.setHex(0xfff5e0);
+    fillFront.intensity = 0.35;
+    fillBack.intensity = 0.20;
+  }
+}
+document.getElementById('btn-time').addEventListener('click', toggleTimeOfDay);
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'n' && !e.repeat) {
+    toggleTimeOfDay();
+    e.preventDefault();
+  }
+});
 
 // Zoom in/out via scroll wheel in chase cam mode
 renderer.domElement.addEventListener('wheel', (e) => {
