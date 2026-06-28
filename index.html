@@ -544,25 +544,53 @@ function updateEngineSound(speed) {
 
 function playBrakeSound(intensity) {
   if (!audioCtx) return;
-  const dur = 0.15 + intensity * 0.2;
+  const dur = 0.1 + intensity * 0.1;
   const noise = audioCtx.createBufferSource();
   const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.min(1, i / 200) * intensity;
+    data[i] = (Math.random() * 2 - 1) * Math.min(1, i / 300) * intensity * 0.6;
   }
   noise.buffer = buf;
   const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 800 + intensity * 1200;
-  filter.Q.value = 0.5;
+  filter.type = 'lowpass';
+  filter.frequency.value = 400 + intensity * 600;
+  filter.Q.value = 0.3;
   const gain = audioCtx.createGain();
-  gain.gain.value = intensity * 0.15;
+  gain.gain.value = intensity * 0.08;
   noise.connect(filter);
   filter.connect(gain);
   gain.connect(audioCtx.destination);
   noise.start();
   noise.stop(audioCtx.currentTime + dur);
+}
+
+function playCrashSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  // Layered impact — low thud + metallic crunch
+  for (let layer = 0; layer < 3; layer++) {
+    const dur = 0.15 + layer * 0.1;
+    const noise = audioCtx.createBufferSource();
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const env = Math.exp(-i / (audioCtx.sampleRate * 0.04));
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 150 + layer * 200;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.25 - layer * 0.06, now + layer * 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur + layer * 0.02);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    noise.start(now + layer * 0.02);
+    noise.stop(now + dur + layer * 0.02);
+  }
 }
 
 function playHorn() {
@@ -1303,7 +1331,7 @@ function updatePlayer(dt) {
     playerCar.speed = Math.min(playerCar.speed + CONFIG.playerAccel * dt, 200 / 2.237);
   } else if (isBrake()) {
     playerCar.speed = Math.max(playerCar.speed - CONFIG.playerBrake * dt, 0);
-    if (playerCar.speed > 5) playBrakeSound(0.4 + playerCar.speed * 0.02);
+    if (playerCar.speed > 5) playBrakeSound(Math.min(1, playerCar.speed * 0.03));
   } else {
     // Gentle natural deceleration (engine braking)
     playerCar.speed = Math.max(playerCar.speed - 2 * dt, 0);
@@ -1457,7 +1485,7 @@ function updatePlayer(dt) {
 function triggerGameOver() {
   gameOver = true;
   // Crash sound + silence engine
-  playBrakeSound(1.0);
+  playCrashSound();
   if (engineGain) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
   document.getElementById('game-over').classList.add('active');
   document.getElementById('final-score').textContent = Math.round(score);
