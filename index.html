@@ -255,8 +255,8 @@
   }
   #speed-lines.active { opacity: 1; }
   #speed-lines .line {
-    position: absolute; top: 0; height: 100%; width: 2px;
-    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.15), transparent);
+    position: absolute; top: 0; height: 100%; width: 1px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.06), transparent);
     animation: speedStreak linear infinite;
   }
   @keyframes speedStreak {
@@ -1694,8 +1694,8 @@ function updatePlayer(dt) {
 
   // Speed lines — more lines at higher speed
   const linesContainer = document.getElementById('speed-lines');
-  const targetLines = Math.floor(mph / 8); // 1 line per 8 mph, max ~25 lines
-  const clampedLines = Math.max(0, Math.min(targetLines, 25));
+  const targetLines = Math.floor(mph / 20); // 1 line per 20 mph
+  const clampedLines = Math.max(0, Math.min(targetLines, 10));
   if (clampedLines > 0) {
     linesContainer.classList.add('active');
   } else {
@@ -1708,8 +1708,8 @@ function updatePlayer(dt) {
       const line = document.createElement('div');
       line.className = 'line';
       line.style.left = Math.random() * 100 + '%';
-      line.style.animationDuration = (0.5 + Math.random() * 1.5) + 's';
-      line.style.opacity = 0.3 + Math.random() * 0.5;
+      line.style.animationDuration = (0.3 + Math.random() * 0.8) + 's';
+      line.style.opacity = 0.15 + Math.random() * 0.3;
       linesContainer.appendChild(line);
     }
   } else if (currentLines > clampedLines) {
