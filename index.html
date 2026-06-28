@@ -1137,7 +1137,7 @@ function updatePlayer(dt) {
   // Overspeed penalty — deduct points when exceeding 70 mph
   const OVERSPEED_LIMIT = 70;
   if (mph > OVERSPEED_LIMIT) {
-    score -= (mph - OVERSPEED_LIMIT) * dt * 2;
+    score = Math.max(0, score - (mph - OVERSPEED_LIMIT) * dt * 0.5);
   }
 
   // Brake lights
