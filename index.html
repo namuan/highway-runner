@@ -337,7 +337,7 @@
   <!-- Bottom controls -->
   <div id="controls">
     <span style="color:#888;font-size:11px">W/↑ Accel &nbsp; S/↓/Space Brake &nbsp; A/← D/→ Lane &nbsp; <b>V</b> View &nbsp; <b>R</b> Reverse</span>
-    <button class="btn" id="btn-view">🔝 Top</button>
+    <button class="btn" id="btn-view">🎥 FPV</button>
     <button class="btn" id="btn-time">🌙 Night</button>
     <button class="btn" id="btn-reset">⟳ Reset</button>
   </div>
@@ -482,7 +482,7 @@ let playerCar = null;
 let gameOver = false;
 let score = 0;
 let lastProgress = 0;
-let viewMode = 'top'; // 'top' or 'fpv'
+let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDay = 'day';  // 'day' or 'night'
 let chaseDistance = 3;
 // Keyboard state
@@ -1363,8 +1363,10 @@ function restartGame() {
   lastProgress = 0;
   spawnTimer = 0;
 
-  // Reset view
-  if (viewMode === 'fpv') toggleView();
+  // Reset view — keep FPV mode active
+  if (viewMode === 'fpv') {
+    controls.enabled = false;
+  }
 
   // Hide game over
   document.getElementById('game-over').classList.remove('active');
@@ -1762,14 +1764,19 @@ playerCar = createPlayerCar();
 lastProgress = playerCar.progress;
 spawnInitialCars(20);
 
-// Snap camera to player immediately (chase cam position)
-const startPos = playerCar.mesh.position.clone();
-const startDir = playerCar.lane.dirVec.clone();
-const camStart = startPos.clone()
-  .add(startDir.clone().multiplyScalar(-chaseDistance))
-  .add(new THREE.Vector3(0, chaseDistance * 0.7, 0));
-camera.position.copy(camStart);
-camera.lookAt(startPos);
+// Snap camera to player immediately
+if (viewMode === 'top') {
+  const startPos = playerCar.mesh.position.clone();
+  const startDir = playerCar.lane.dirVec.clone();
+  camera.position.copy(startPos.clone().add(startDir.clone().multiplyScalar(-chaseDistance)).add(new THREE.Vector3(0, chaseDistance * 0.7, 0)));
+  camera.lookAt(startPos);
+} else {
+  // FPV — snap behind the car
+  const startPos = playerCar.mesh.position.clone();
+  const startDir = playerCar.lane.dirVec.clone();
+  camera.position.copy(startPos.clone().add(startDir.clone().multiplyScalar(-8)).add(new THREE.Vector3(0, 4, 0)));
+  camera.lookAt(startPos.clone().add(startDir.clone().multiplyScalar(30)).add(new THREE.Vector3(0, 1.5, 0)));
+}
 
 // Restart button
 document.getElementById('btn-restart').addEventListener('click', restartGame);
