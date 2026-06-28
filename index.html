@@ -1519,6 +1519,22 @@ function triggerGameOver() {
   console.log('🔥 Fire at', fireGroup.position.toArray().map(v => v.toFixed(1)));
   scene.add(fireGroup);
 
+  // Cinematic orbit — circle around the burning car
+  controls.target.copy(firePos);
+  controls.enabled = true;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.6;
+  controls.minDistance = 4;
+  controls.maxDistance = 12;
+  // Position camera at a nice angle
+  const orbitDist = 7;
+  camera.position.copy(firePos).add(new THREE.Vector3(orbitDist * 0.6, orbitDist * 0.5, orbitDist * 0.6));
+  camera.lookAt(firePos);
+  controls.target.set(firePos.x, firePos.y, firePos.z);
+  controls.update();
+
   // Show game over with a 1-second delay
   setTimeout(() => {
     document.getElementById('final-score').textContent = Math.round(score);
@@ -1553,6 +1569,7 @@ function restartGame() {
   if (viewMode === 'fpv') {
     controls.enabled = false;
   }
+  controls.autoRotate = false;
 
   // Hide game over
   document.getElementById('game-over').classList.remove('active');
@@ -1842,7 +1859,9 @@ function animate(time) {
     // Animate fire
     if (fireGroup && playerCar) {
       fireGroup.position.copy(playerCar.mesh.position);
-      fireGroup.position.y += 0.5;
+      fireGroup.position.y += 1.0;
+      // Update orbit target to track car
+      controls.target.copy(fireGroup.position);
       const t = time * 0.001;
       fireGroup.children.forEach(flame => {
         const u = flame.userData;
@@ -1879,7 +1898,8 @@ function animate(time) {
   if (gameOver) {
     if (fireGroup && playerCar) {
       fireGroup.position.copy(playerCar.mesh.position);
-      fireGroup.position.y += 0.5;
+      fireGroup.position.y += 1.0;
+      controls.target.copy(fireGroup.position);
     }
     controls.update();
     renderer.render(scene, camera);
