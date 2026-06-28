@@ -367,8 +367,8 @@ const CONFIG = {
 //  GLOBALS
 // ============================================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050508);
-scene.fog = new THREE.FogExp2(0x050508, 0.005);
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.FogExp2(0x87ceeb, 0.001);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1200);
 camera.position.set(0, 75, 0.01);
@@ -398,12 +398,12 @@ scene.add(worldGroup);
 // ============================================================
 //  TUNNEL LIGHTING
 // ============================================================
-// Dim ambient — tunnel interior
-const ambient = new THREE.AmbientLight(0xaaccff, 1.0);
+// Bright ambient — daytime tunnel interior
+const ambient = new THREE.AmbientLight(0xffffee, 1.5);
 scene.add(ambient);
 
 // Warm directional light simulating tunnel lighting wash
-const tunnelLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
+const tunnelLight = new THREE.DirectionalLight(0xfff5e0, 1.8);
 tunnelLight.position.set(0, 14, 0);
 tunnelLight.castShadow = true;
 tunnelLight.shadow.mapSize.width = 1024;
@@ -416,12 +416,12 @@ tunnelLight.shadow.camera.top = 80;
 tunnelLight.shadow.camera.bottom = -80;
 scene.add(tunnelLight);
 
-// Subtle fill from car headlights direction
-const fillFront = new THREE.DirectionalLight(0xaaccff, 0.35);
+// Bright fill lights
+const fillFront = new THREE.DirectionalLight(0xaaccff, 0.5);
 fillFront.position.set(0, 2, 30);
 scene.add(fillFront);
 
-const fillBack = new THREE.DirectionalLight(0xffccaa, 0.20);
+const fillBack = new THREE.DirectionalLight(0xffccaa, 0.3);
 fillBack.position.set(0, 2, -30);
 scene.add(fillBack);
 
@@ -987,14 +987,14 @@ function toggleTimeOfDay() {
     fillFront.intensity = 0.15;
     fillBack.intensity = 0.1;
   } else {
-    scene.background = new THREE.Color(0x050508);
-    scene.fog = new THREE.FogExp2(0x050508, 0.005);
-    ambient.intensity = 1.0;
-    ambient.color.setHex(0xaaccff);
-    tunnelLight.intensity = 1.2;
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.FogExp2(0x87ceeb, 0.001);
+    ambient.intensity = 1.5;
+    ambient.color.setHex(0xffffee);
+    tunnelLight.intensity = 1.8;
     tunnelLight.color.setHex(0xfff5e0);
-    fillFront.intensity = 0.35;
-    fillBack.intensity = 0.20;
+    fillFront.intensity = 0.5;
+    fillBack.intensity = 0.3;
   }
 }
 document.getElementById('btn-time').addEventListener('click', toggleTimeOfDay);
