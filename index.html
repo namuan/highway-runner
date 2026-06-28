@@ -875,17 +875,6 @@ function createPlayerCar() {
   const forward = new THREE.Vector3(0, 0, 1);
   mesh.quaternion.setFromUnitVectors(forward, lane.dirVec);
 
-  // Add a glowing ring above the player car for visibility
-  const ringGeo = new THREE.TorusGeometry(1.2, 0.08, 8, 16);
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: 0x00ccff, emissive: 0x00ccff, emissiveIntensity: 0.8, roughness: 0.2
-  });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 1.6;
-  ring.userData.isMarker = true;
-  mesh.add(ring);
-
   scene.add(mesh);
   lane.cars.push(car);
   cars.push(car);
@@ -1141,7 +1130,7 @@ function updatePlayer(dt) {
 
   // Acceleration / braking
   if (isAccel()) {
-    playerCar.speed += CONFIG.playerAccel * dt;
+    playerCar.speed = Math.min(playerCar.speed + CONFIG.playerAccel * dt, 200 / 2.237);
   } else if (isBrake()) {
     playerCar.speed = Math.max(playerCar.speed - CONFIG.playerBrake * dt, 0);
   } else {
@@ -1149,24 +1138,8 @@ function updatePlayer(dt) {
     playerCar.speed = Math.max(playerCar.speed - 2 * dt, 0);
   }
 
-  // Speed warnings — under-speed glow & overspeed penalty
+  // Speed — under-speed warning & overspeed penalty
   const mph = playerCar.speed * 2.237;
-  const ring = playerCar.mesh.children.find(c => c.userData.isMarker);
-  if (ring) {
-    if (mph < CONFIG.minSafeSpeed) {
-      ring.material.color.setHex(0xff4444);
-      ring.material.emissive.setHex(0xff4444);
-      ring.material.emissiveIntensity = 0.6 + Math.sin(performance.now() * 0.01) * 0.4;
-    } else if (mph > 70) {
-      ring.material.color.setHex(0xff8800);
-      ring.material.emissive.setHex(0xff8800);
-      ring.material.emissiveIntensity = 0.5 + Math.sin(performance.now() * 0.01) * 0.3;
-    } else {
-      ring.material.color.setHex(0x00ccff);
-      ring.material.emissive.setHex(0x00ccff);
-      ring.material.emissiveIntensity = 0.5;
-    }
-  }
 
   // Overspeed penalty — deduct points when exceeding 70 mph
   const OVERSPEED_LIMIT = 70;
