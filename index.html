@@ -496,6 +496,7 @@ let carIdCounter = 0;
 let playerCar = null;
 let gameOver = false;
 let score = 0;
+let gameTime = 0;        // elapsed game time (seconds)
 let lastProgress = 0;
 let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDay = 'day';  // 'day' or 'night'
@@ -1100,7 +1101,9 @@ function spawnCar() {
   const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
   const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
 
-  const targetSpeed = CONFIG.carMinSpeed + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+  const difficulty = Math.min(gameTime / 120, 1);
+  const speedBonus = difficulty * 10;
+  const targetSpeed = CONFIG.carMinSpeed + speedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
 
   // Start slightly past 0 with randomness to avoid collisions at spawn
   const startProgress = 1 + Math.random() * 8;
@@ -1387,6 +1390,7 @@ function restartGame() {
   // Reset state
   gameOver = false;
   score = 0;
+  gameTime = 0;
   lastProgress = 0;
   spawnTimer = 0;
 
@@ -1689,13 +1693,17 @@ function animate(time) {
 
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
+  if (!gameOver) gameTime += dt;
 
-  // Spawn AI cars
+  // Spawn AI cars — difficulty scales with gameTime
+  const difficulty = Math.min(gameTime / 120, 1); // ramps up over 2 minutes
   spawnTimer += dt;
-  const spawnInterval = CONFIG.spawnIntervalBase;
-  if (spawnTimer >= spawnInterval && cars.length < 80) {
+  const spawnInterval = CONFIG.spawnIntervalBase * (1 - difficulty * 0.75); // 1.2s → 0.3s
+  const maxCars = Math.floor(40 + difficulty * 80); // 40 → 120
+  const spawnBatch = Math.floor(3 + difficulty * 3); // 3 → 6 cars per batch
+  if (spawnTimer >= spawnInterval && cars.length < maxCars) {
     spawnTimer = 0;
-    for (let a = 0; a < 3; a++) {
+    for (let a = 0; a < spawnBatch; a++) {
       if (spawnCar() !== null) break;
     }
   }
@@ -1755,7 +1763,9 @@ function spawnInitialCars(count) {
     const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
     const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
     const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
-    const targetSpeed = CONFIG.carMinSpeed + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+    const difficulty = Math.min(gameTime / 120, 1);
+    const speedBonus = difficulty * 10;
+    const targetSpeed = CONFIG.carMinSpeed + speedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
 
     // Random starting position spread across the lane
     const startProgress = 10 + Math.random() * (lane.length * 0.85);
