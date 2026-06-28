@@ -213,14 +213,16 @@
   #game-over {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8);
-    backdrop-filter: blur(8px);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
     display: none;
-    justify-content: center;
+    justify-content: flex-end;
     align-items: center;
     z-index: 100;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    padding-bottom: 60px;
+    pointer-events: none;
   }
   #game-over.active { display: flex; }
   #game-over h2 {
@@ -228,6 +230,8 @@
     font-weight: 800;
     color: #ff4444;
     letter-spacing: -1px;
+    text-shadow: 0 0 20px rgba(255,0,0,0.5);
+    margin: 0;
   }
   #game-over .final-score {
     font-size: 18px;
@@ -240,6 +244,7 @@
   #game-over .btn {
     font-size: 14px;
     padding: 10px 28px;
+    pointer-events: auto;
     margin-top: 8px;
   }
 
