@@ -2,7 +2,7 @@
 
 A 3D driving game built with **Three.js**. Cruise along a scenic mountain highway, navigate traffic, and survive as long as you can — the longer you drive, the harder it gets.
 
-![Highway Runner Screenshot](screenshot.png)
+![Highway Runner Screenshot](screenshot.jpg)
 
 ## 🎮 How to Play
 
