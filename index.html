@@ -85,17 +85,17 @@
   /* Bottom controls panel */
   #controls {
     position: absolute;
-    bottom: 24px; left: 50%;
-    transform: translateX(-50%);
+    bottom: 72px; left: 24px;
+    transform: none;
     background: rgba(0,0,0,0.75);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 16px;
-    padding: 16px 28px;
+    padding: 12px 18px;
     display: flex;
     align-items: center;
-    gap: 32px;
+    gap: 16px;
     font-size: 13px;
   }
 
@@ -514,6 +514,42 @@
 
   /* Hover: only on devices with hover (mouse) */
   @media (hover: hover) {
+    #controls {
+      max-width: 52px;
+      min-height: 44px;
+      padding: 10px 14px;
+      gap: 0;
+      overflow: hidden;
+      cursor: default;
+      transition: max-width 0.22s ease, padding 0.22s ease, gap 0.22s ease, background 0.2s ease;
+      white-space: nowrap;
+    }
+    #controls::before {
+      content: '⚙';
+      color: #ffcc00;
+      font-size: 18px;
+      line-height: 1;
+    }
+    #controls > * {
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      pointer-events: none;
+      transition: max-width 0.22s ease, opacity 0.16s ease;
+      white-space: nowrap;
+    }
+    #controls:hover {
+      max-width: min(760px, calc(100vw - 48px));
+      padding: 12px 18px;
+      gap: 16px;
+      background: rgba(0,0,0,0.82);
+    }
+    #controls:hover::before { display: none; }
+    #controls:hover > * {
+      max-width: 720px;
+      opacity: 1;
+      pointer-events: auto;
+    }
     #controls input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
     .btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
     .btn-primary:hover { opacity: 0.9; color: #000; }
