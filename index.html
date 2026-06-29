@@ -566,9 +566,9 @@
 
   <!-- Bottom controls -->
   <div id="controls">
-    <span style="color:#888;font-size:11px">↑ Accel &nbsp; ↓/Space Brake &nbsp; ← → Lane &nbsp; <b>V</b> View &nbsp; <b>R</b> Reverse &nbsp; <b>N</b> Night</span>
+    <span style="color:#888;font-size:11px">↑ Accel &nbsp; ↓/Space Brake &nbsp; ← → Lane &nbsp; <b>V</b> View &nbsp; <b>R</b> Reverse &nbsp; <b>N</b> Skip Time</span>
     <button class="btn" id="btn-view">🎥 FPV</button>
-    <button class="btn" id="btn-time">🌙 Night</button>
+    <button class="btn" id="btn-time">⏭ Time</button>
     <button class="btn" id="btn-reset">⟳ Reset</button>
   </div>
 
@@ -679,6 +679,7 @@ const CONFIG = {
     slowdownChanceMultiplierMax: 2.5,
     laneChangeChanceMultiplierMax: 2,
   },
+  dayCycleDuration: 240,
   // Random slowdown events trigger braking shockwaves
   slowdownChance: 0.0004,
   slowdownDuration: 2.5,
@@ -776,7 +777,9 @@ let score = 0;
 let gameTime = 0;        // elapsed game time (seconds)
 let lastProgress = 0;
 let viewMode = 'fpv'; // 'top' or 'fpv'
-let timeOfDay = 'day';  // 'day' or 'night'
+let timeOfDayPhase = Math.random(); // 0..1, randomized so each run starts at a different time of day
+let timeOfDayLabel = 'Day';
+let currentNightFactor = 0; // 0 = bright day, 1 = darkest night
 let chaseDistance = 3;
 let mobileOnboardingActive = false;
 // Keyboard state
@@ -792,6 +795,88 @@ function lerpNumber(start, end, t) {
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
+
+const TIME_OF_DAY_STAGES = [
+  { at: 0.00, label: 'Night', sky: 0x020208, fogNear: 55, fogFar: 430, ambient: 0.22, ambientColor: 0x334466, sun: 0.35, sunColor: 0x88aaff, fill: 0.12, exposure: 0.68, carLights: 1.00 },
+  { at: 0.18, label: 'Dawn',  sky: 0xff9f66, fogNear: 75, fogFar: 620, ambient: 0.48, ambientColor: 0xffb082, sun: 1.25, sunColor: 0xffbb77, fill: 0.24, exposure: 0.82, carLights: 0.55 },
+  { at: 0.34, label: 'Day',   sky: 0x87ceeb, fogNear: 100, fogFar: 800, ambient: 0.80, ambientColor: 0xaaccff, sun: 2.50, sunColor: 0xfff8e7, fill: 0.40, exposure: 0.90, carLights: 0.00 },
+  { at: 0.64, label: 'Day',   sky: 0x79bde8, fogNear: 100, fogFar: 780, ambient: 0.72, ambientColor: 0xaaccff, sun: 2.10, sunColor: 0xfff0cc, fill: 0.36, exposure: 0.88, carLights: 0.00 },
+  { at: 0.78, label: 'Dusk',  sky: 0xff6f55, fogNear: 75, fogFar: 590, ambient: 0.42, ambientColor: 0xff8c77, sun: 1.05, sunColor: 0xff8844, fill: 0.22, exposure: 0.78, carLights: 0.70 },
+  { at: 1.00, label: 'Night', sky: 0x020208, fogNear: 55, fogFar: 430, ambient: 0.22, ambientColor: 0x334466, sun: 0.35, sunColor: 0x88aaff, fill: 0.12, exposure: 0.68, carLights: 1.00 },
+];
+
+function getTimeOfDayBlend(phase) {
+  for (let i = 0; i < TIME_OF_DAY_STAGES.length - 1; i++) {
+    const current = TIME_OF_DAY_STAGES[i];
+    const next = TIME_OF_DAY_STAGES[i + 1];
+    if (phase >= current.at && phase <= next.at) {
+      const t = (phase - current.at) / (next.at - current.at || 1);
+      return { current, next, t: easeInOutCubic(t) };
+    }
+  }
+  return { current: TIME_OF_DAY_STAGES[0], next: TIME_OF_DAY_STAGES[1], t: 0 };
+}
+
+function lerpColor(startHex, endHex, t) {
+  return new THREE.Color(startHex).lerp(new THREE.Color(endHex), t);
+}
+
+function applyTimeOfDay(phase) {
+  const { current, next, t } = getTimeOfDayBlend(phase);
+  const skyColor = lerpColor(current.sky, next.sky, t);
+  scene.background.copy(skyColor);
+  scene.fog.color.copy(skyColor);
+  scene.fog.near = lerpNumber(current.fogNear, next.fogNear, t);
+  scene.fog.far = lerpNumber(current.fogFar, next.fogFar, t);
+
+  ambient.color.copy(lerpColor(current.ambientColor, next.ambientColor, t));
+  ambient.intensity = lerpNumber(current.ambient, next.ambient, t);
+  sunLight.color.copy(lerpColor(current.sunColor, next.sunColor, t));
+  sunLight.intensity = lerpNumber(current.sun, next.sun, t);
+  skyFill.intensity = lerpNumber(current.fill, next.fill, t);
+  renderer.toneMappingExposure = lerpNumber(current.exposure, next.exposure, t);
+
+  const sunAngle = phase * Math.PI * 2 - Math.PI / 2;
+  sunLight.position.set(Math.cos(sunAngle) * 100, Math.sin(sunAngle) * 75 + 20, 40);
+  currentNightFactor = lerpNumber(current.carLights, next.carLights, t);
+  updateCarLightsForTimeOfDay();
+  timeOfDayLabel = t < 0.5 ? current.label : next.label;
+  document.getElementById('btn-time').textContent = `⏭ ${timeOfDayLabel}`;
+}
+
+function updateCarLightsForTimeOfDay() {
+  const headlightIntensity = lerpNumber(0.45, 3.8, currentNightFactor);
+  const headlightGlowIntensity = lerpNumber(0.25, 2.6, currentNightFactor);
+  const tailBaseIntensity = lerpNumber(0.12, 0.65, currentNightFactor);
+
+  for (const car of cars) {
+    if (car.headlightMats) {
+      for (const mat of car.headlightMats) {
+        mat.emissiveIntensity = headlightIntensity;
+        mat.color.setHex(currentNightFactor > 0.45 ? 0xfff2aa : 0xffffcc);
+      }
+    }
+    if (car.headlightGlowMats) {
+      for (const mat of car.headlightGlowMats) {
+        mat.emissiveIntensity = headlightGlowIntensity;
+        mat.color.setHex(currentNightFactor > 0.45 ? 0xffee99 : 0xffffcc);
+      }
+    }
+    if (car.taillightMats) {
+      const brakeBoost = (car.brakeIntensity || 0) * 3.2;
+      for (const mat of car.taillightMats) {
+        mat.emissiveIntensity = tailBaseIntensity + brakeBoost;
+      }
+    }
+  }
+}
+
+function updateTimeOfDay(dt) {
+  timeOfDayPhase = (timeOfDayPhase + dt / CONFIG.dayCycleDuration) % 1;
+  applyTimeOfDay(timeOfDayPhase);
+}
+
+applyTimeOfDay(timeOfDayPhase);
 
 function getDifficultyState() {
   const cfg = CONFIG.difficulty;
@@ -1315,6 +1400,8 @@ function createCarModel(color) {
   const group = new THREE.Group();
   const taillightMats = [];
   const turnSignalMats = [];
+  const headlightMats = [];
+  const headlightGlowMats = [];
 
   // Body
   const bodyGeo = new THREE.BoxGeometry(CONFIG.carWidth, CONFIG.carBodyHeight, CONFIG.carLength);
@@ -1391,6 +1478,7 @@ function createCarModel(color) {
     const hl = new THREE.Mesh(hlGeo, hlMat);
     hl.position.set(side * CONFIG.carWidth * 0.35, CONFIG.carBodyHeight * 0.6, CONFIG.carLength / 2 + 0.03);
     group.add(hl);
+    headlightMats.push(hlMat);
   }
 
   // Headlight glow (emissive standard material, no transparency)
@@ -1406,6 +1494,7 @@ function createCarModel(color) {
     const glow = new THREE.Mesh(glowGeo, glowMat);
     glow.position.set(side * CONFIG.carWidth, CONFIG.carBodyHeight * 0.35, CONFIG.carLength / 2 + 0.65);
     group.add(glow);
+    headlightGlowMats.push(glowMat);
   }
 
   // Taillights (red) — store material refs for dynamic brake-glow
@@ -1434,7 +1523,7 @@ function createCarModel(color) {
     turnSignalMats.push(tsMat); // index 0 = left (-1), index 1 = right (+1)
   }
 
-  return { group, taillightMats, turnSignalMats };
+  return { group, taillightMats, turnSignalMats, headlightMats, headlightGlowMats };
 }
 
 // ============================================================
@@ -1442,7 +1531,7 @@ function createCarModel(color) {
 // ============================================================
 function createPlayerCar() {
   const lane = laneDefs[0]; // start in left lane
-  const { group: mesh, taillightMats } = createCarModel(CONFIG.playerColor);
+  const { group: mesh, taillightMats, headlightMats, headlightGlowMats } = createCarModel(CONFIG.playerColor);
 
   const car = {
     id: carIdCounter++,
@@ -1457,6 +1546,8 @@ function createPlayerCar() {
     prevSpeed: 0,
     brakeIntensity: 0,
     taillightMats: taillightMats,
+    headlightMats: headlightMats,
+    headlightGlowMats: headlightGlowMats,
     isPlayer: true,
     laneChangeTimer: 0,
   };
@@ -1685,32 +1776,15 @@ document.addEventListener('keydown', (e) => {
 });
 document.getElementById('btn-view').addEventListener('click', toggleView);
 
-// Day/Night toggle
-function toggleTimeOfDay() {
-  timeOfDay = timeOfDay === 'day' ? 'night' : 'day';
-  document.getElementById('btn-time').textContent = timeOfDay === 'day' ? '🌙 Night' : '☀️ Day';
-  if (timeOfDay === 'night') {
-    scene.background = new THREE.Color(0x020208);
-    scene.fog = new THREE.Fog(0x020208, 60, 500);
-    ambient.intensity = 0.25;
-    ambient.color.setHex(0x334466);
-    sunLight.intensity = 0.5;
-    sunLight.color.setHex(0xaaccff);
-    skyFill.intensity = 0.15;
-  } else {
-    scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.Fog(0x87ceeb, 100, 800);
-    ambient.intensity = 0.8;
-    ambient.color.setHex(0xaaccff);
-    sunLight.intensity = 2.5;
-    sunLight.color.setHex(0xfff8e7);
-    skyFill.intensity = 0.4;
-  }
+// Time-of-day cycle — button/key skips ahead while the world keeps cycling smoothly.
+function skipTimeOfDay() {
+  timeOfDayPhase = (timeOfDayPhase + 0.25) % 1;
+  applyTimeOfDay(timeOfDayPhase);
 }
-document.getElementById('btn-time').addEventListener('click', toggleTimeOfDay);
+document.getElementById('btn-time').addEventListener('click', skipTimeOfDay);
 document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'n' && !e.repeat) {
-    toggleTimeOfDay();
+    skipTimeOfDay();
     e.preventDefault();
   }
 });
@@ -1732,7 +1806,7 @@ function spawnCar() {
   const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
 
   const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
-  const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
+  const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color);
 
   const difficulty = getDifficultyState();
   const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
@@ -1754,6 +1828,8 @@ function spawnCar() {
     prevSpeed: 0,
     brakeIntensity: 0,
     taillightMats: taillightMats,
+    headlightMats: headlightMats,
+    headlightGlowMats: headlightGlowMats,
     turnSignalMats: turnSignalMats,
     shockwaveIntensity: 0,
     shockwaveTimer: 0,
@@ -1880,8 +1956,9 @@ function updatePlayer(dt) {
   // Brake lights
   const rawBrake = (playerCar.prevSpeed - playerCar.speed) / (CONFIG.playerBrake * dt + 0.001);
   playerCar.brakeIntensity = Math.max(0, Math.min(rawBrake, 1));
+  const playerTailBaseIntensity = lerpNumber(0.12, 0.65, currentNightFactor);
   for (const mat of playerCar.taillightMats) {
-    mat.emissiveIntensity = 0.12 + playerCar.brakeIntensity * 3.2;
+    mat.emissiveIntensity = playerTailBaseIntensity + playerCar.brakeIntensity * 3.2;
     mat.color.setHex(playerCar.brakeIntensity > 0.2 ? 0xff3300 : 0xcc1100);
   }
   playerCar.prevSpeed = playerCar.speed;
@@ -2106,6 +2183,8 @@ function restartGame() {
   gameTime = 0;
   lastProgress = 0;
   spawnTimer = 0;
+  timeOfDayPhase = Math.random();
+  applyTimeOfDay(timeOfDayPhase);
 
   // Reset view — keep FPV mode active
   if (viewMode === 'fpv') {
@@ -2264,8 +2343,9 @@ function updateCars(dt, simSpeed) {
     if (car.shockwaveIntensity > 0.01) {
       car.brakeIntensity = Math.max(car.brakeIntensity, car.shockwaveIntensity * 0.7);
     }
+    const tailBaseIntensity = lerpNumber(0.12, 0.65, currentNightFactor);
     for (const mat of car.taillightMats) {
-      mat.emissiveIntensity = 0.12 + car.brakeIntensity * 3.2;
+      mat.emissiveIntensity = tailBaseIntensity + car.brakeIntensity * 3.2;
       mat.color.setHex(car.brakeIntensity > 0.2 ? 0xff3300 : 0xcc1100);
     }
     car.prevSpeed = car.speed;
@@ -2438,6 +2518,7 @@ function animate(time) {
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   if (!gameOver) gameTime += dt;
+  updateTimeOfDay(dt);
 
   // Spawn AI cars — difficulty scales with gameTime
   const difficulty = getDifficultyState();
@@ -2519,7 +2600,7 @@ function spawnInitialCars(count) {
   for (let i = 0; i < count; i++) {
     const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
     const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
-    const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
+    const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color);
     const difficulty = getDifficultyState();
     const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
 
@@ -2540,6 +2621,8 @@ function spawnInitialCars(count) {
       prevSpeed: targetSpeed * 0.5,
       brakeIntensity: 0,
       taillightMats: taillightMats,
+      headlightMats: headlightMats,
+      headlightGlowMats: headlightGlowMats,
       turnSignalMats: turnSignalMats,
       shockwaveIntensity: 0,
       shockwaveTimer: 0,
