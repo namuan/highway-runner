@@ -71,6 +71,17 @@
     min-width: 28px;
   }
 
+  #top-bar .stat.difficulty-hot .value {
+    color: #ff9944;
+    text-shadow: 0 0 10px rgba(255,153,68,0.6);
+  }
+
+  #top-bar .stat.difficulty-extreme .value {
+    color: #ff3333;
+    text-shadow: 0 0 12px rgba(255,51,51,0.75);
+    animation: pulse 0.5s ease-in-out infinite alternate;
+  }
+
   /* Bottom controls panel */
   #controls {
     position: absolute;
@@ -364,6 +375,119 @@
   @keyframes rotate-phone { from { transform: rotate(0deg); } to { transform: rotate(90deg); } }
   #orientation-hint p { color: #ccc; font-size: 14px; }
 
+  /* Mobile onboarding — teaches invisible touch zones before play */
+  #mobile-onboarding {
+    position: fixed; inset: 0;
+    z-index: 260;
+    display: none;
+    background: radial-gradient(ellipse at center, rgba(10,18,30,0.62), rgba(0,0,0,0.88));
+    color: #fff;
+    pointer-events: auto;
+    overflow: hidden;
+  }
+  #mobile-onboarding.active { display: block; }
+  #mobile-onboarding .onboarding-title {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 18px);
+    left: 50%; transform: translateX(-50%);
+    text-align: center;
+    background: rgba(0,0,0,0.72);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 12px 18px;
+    min-width: min(88vw, 420px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  }
+  #mobile-onboarding h2 {
+    font-size: 20px;
+    line-height: 1.1;
+    margin: 0 0 6px;
+    letter-spacing: -0.4px;
+  }
+  #mobile-onboarding p {
+    margin: 0;
+    color: #cfd6df;
+    font-size: 13px;
+  }
+  #mobile-onboarding .onboarding-zone {
+    position: absolute;
+    border: 2px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px;
+  }
+  #mobile-onboarding .onboarding-zone strong {
+    display: block;
+    font-size: 17px;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  #mobile-onboarding .onboarding-zone span {
+    display: block;
+    font-size: 12px;
+    color: rgba(255,255,255,0.76);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  #mobile-onboarding .zone-steer {
+    left: 0; top: 0; bottom: 0; width: 40%;
+    background: linear-gradient(90deg, rgba(0,255,136,0.18), rgba(0,255,136,0.04));
+    border-color: rgba(0,255,136,0.35);
+  }
+  #mobile-onboarding .zone-gas {
+    right: 0; top: 0; width: 40%; height: 65%;
+    background: linear-gradient(180deg, rgba(255,204,0,0.22), rgba(255,204,0,0.06));
+    border-color: rgba(255,204,0,0.4);
+  }
+  #mobile-onboarding .zone-brake {
+    right: 0; bottom: 0; width: 40%; height: 35%;
+    background: linear-gradient(0deg, rgba(255,68,68,0.24), rgba(255,68,68,0.07));
+    border-color: rgba(255,68,68,0.42);
+  }
+  #mobile-onboarding .zone-center {
+    left: 41%; right: 41%; top: 34%; bottom: 34%;
+    border-radius: 18px;
+    border-style: dashed;
+    background: rgba(0,0,0,0.42);
+  }
+  #mobile-onboarding .onboarding-actions {
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  #mobile-onboarding .onboarding-actions .btn {
+    min-height: 48px;
+    padding: 13px 28px;
+    font-size: 15px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(255,153,68,0.24);
+  }
+  #mobile-onboarding .onboarding-note {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.5);
+    padding: 7px 12px;
+    border-radius: 999px;
+  }
+
+  @media (max-width: 480px) and (orientation: portrait) {
+    #mobile-onboarding .onboarding-title { top: calc(env(safe-area-inset-top, 0px) + 12px); }
+    #mobile-onboarding h2 { font-size: 18px; }
+    #mobile-onboarding .zone-steer { top: 18%; height: 58%; width: 45%; }
+    #mobile-onboarding .zone-gas { top: 18%; width: 45%; height: 36%; }
+    #mobile-onboarding .zone-brake { top: 54%; bottom: auto; width: 45%; height: 22%; }
+    #mobile-onboarding .zone-center { left: 46%; right: 46%; top: 38%; bottom: 42%; padding: 6px; }
+    #mobile-onboarding .onboarding-zone strong { font-size: 15px; }
+    #mobile-onboarding .onboarding-zone span { font-size: 10px; }
+  }
+
   /* Touch controls overlay */
   #touch-controls {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -409,6 +533,7 @@
     <span class="title">🏎️ Scenic Route</span>
     <span class="stat">📏 <span class="value" id="score">0</span>m</span>
     <span class="stat">🚗 <span class="value" id="car-count">0</span></span>
+    <span class="stat" id="difficulty-stat">🔥 <span class="value" id="difficulty-level">1</span></span>
   </div>
 
   <!-- Road end warning -->
@@ -455,6 +580,30 @@
   </div>
 </div>
 
+<!-- Mobile onboarding: shown once per session to explain invisible touch zones -->
+<div id="mobile-onboarding" aria-modal="true" role="dialog" aria-labelledby="mobile-onboarding-title">
+  <div class="onboarding-title">
+    <h2 id="mobile-onboarding-title">Touch controls</h2>
+    <p>Drive with the screen zones below — no keyboard needed.</p>
+  </div>
+  <div class="onboarding-zone zone-steer">
+    <div><strong>◀ Lane ▶</strong><span>Tap left half / right half</span></div>
+  </div>
+  <div class="onboarding-zone zone-gas">
+    <div><strong>GAS ▲</strong><span>Hold upper right</span></div>
+  </div>
+  <div class="onboarding-zone zone-brake">
+    <div><strong>BRAKE ▼</strong><span>Hold lower right</span></div>
+  </div>
+  <div class="onboarding-zone zone-center">
+    <div><strong>⚙️</strong><span>Double tap center for options</span></div>
+  </div>
+  <div class="onboarding-actions">
+    <button class="btn btn-primary" id="mobile-onboarding-start">Start driving</button>
+    <div class="onboarding-note">Tip: rotate sideways for more road view</div>
+  </div>
+</div>
+
 <!-- Orientation hint -->
 <div id="orientation-hint">
   <div class="icon">📱</div>
@@ -497,7 +646,7 @@ const PERF = {
 //  CONFIGURATION
 // ============================================================
 const CONFIG = {
-  roadLength: 6400,
+  roadLength: 3200,
   roadHalfWidth: 3.75,
   laneWidth: 3.5,
   carColors: [
@@ -515,7 +664,21 @@ const CONFIG = {
   carCabinHeight: 0.35,
   wheelRadius: 0.25,
   wheelWidth: 0.18,
-  spawnIntervalBase: 1.2,
+  difficulty: {
+    rampDuration: 180,
+    maxLevel: 10,
+    spawnStartInterval: 1.3,
+    spawnEndInterval: 0.35,
+    desktopStartMaxCars: 45,
+    desktopEndMaxCars: 130,
+    mobileStartMaxCars: 35,
+    mobileEndMaxCars: 85,
+    spawnStartAttempts: 2,
+    spawnEndAttempts: 6,
+    aiSpeedBonusMax: 14,
+    slowdownChanceMultiplierMax: 2.5,
+    laneChangeChanceMultiplierMax: 2,
+  },
   // Random slowdown events trigger braking shockwaves
   slowdownChance: 0.0004,
   slowdownDuration: 2.5,
@@ -615,11 +778,41 @@ let lastProgress = 0;
 let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDay = 'day';  // 'day' or 'night'
 let chaseDistance = 3;
+let mobileOnboardingActive = false;
 // Keyboard state
 const keys = { ' ': false, arrowup: false, arrowdown: false, arrowleft: false, arrowright: false };
 
 const RL = CONFIG.roadHalfWidth;
 const LW = CONFIG.laneWidth;
+
+function lerpNumber(start, end, t) {
+  return start + (end - start) * t;
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function getDifficultyState() {
+  const cfg = CONFIG.difficulty;
+  const rawProgress = Math.min(Math.max(gameTime / cfg.rampDuration, 0), 1);
+  const progress = easeInOutCubic(rawProgress);
+  const level = Math.min(cfg.maxLevel, Math.max(1, Math.floor(rawProgress * cfg.maxLevel) + 1));
+  const startMaxCars = isMobile ? cfg.mobileStartMaxCars : cfg.desktopStartMaxCars;
+  const endMaxCars = isMobile ? cfg.mobileEndMaxCars : cfg.desktopEndMaxCars;
+
+  return {
+    rawProgress,
+    progress,
+    level,
+    spawnInterval: lerpNumber(cfg.spawnStartInterval, cfg.spawnEndInterval, progress),
+    maxCars: Math.floor(lerpNumber(startMaxCars, endMaxCars, progress)),
+    spawnAttempts: Math.floor(lerpNumber(cfg.spawnStartAttempts, cfg.spawnEndAttempts, progress)),
+    aiSpeedBonus: lerpNumber(0, cfg.aiSpeedBonusMax, progress),
+    slowdownChance: CONFIG.slowdownChance * lerpNumber(1, cfg.slowdownChanceMultiplierMax, progress),
+    laneChangeChanceMultiplier: lerpNumber(1, cfg.laneChangeChanceMultiplierMax, progress),
+  };
+}
 
 // ============================================================
 //  AUDIO SYSTEM — procedural sounds via Web Audio API
@@ -1307,6 +1500,7 @@ function isRight() { return keys.arrowright; }
 function setupTouchControls() {
   if (!isMobile) {
     document.getElementById('touch-controls').style.display = 'none';
+    document.getElementById('mobile-onboarding').classList.remove('active');
     return;
   }
   const tc = document.getElementById('touch-controls');
@@ -1378,6 +1572,43 @@ function setupTouchControls() {
   document.addEventListener('pointermove', () => clearTimeout(longPressTimer));
 }
 
+function setupMobileOnboarding() {
+  const onboarding = document.getElementById('mobile-onboarding');
+  const startButton = document.getElementById('mobile-onboarding-start');
+  if (!isMobile) {
+    onboarding.classList.remove('active');
+    return;
+  }
+
+  let alreadySeen = false;
+  try {
+    alreadySeen = sessionStorage.getItem('scenicRouteMobileOnboardingSeen') === '1';
+  } catch (err) {
+    alreadySeen = false;
+  }
+
+  function dismissOnboarding() {
+    ensureAudio();
+    mobileOnboardingActive = false;
+    onboarding.classList.remove('active');
+    try {
+      sessionStorage.setItem('scenicRouteMobileOnboardingSeen', '1');
+    } catch (err) {
+      // Storage can be unavailable in private browsing; dismissal still works.
+    }
+  }
+
+  onboarding.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+  });
+  startButton.addEventListener('click', dismissOnboarding);
+
+  if (!alreadySeen) {
+    mobileOnboardingActive = true;
+    onboarding.classList.add('active');
+  }
+}
+
 // Orientation hint
 function checkOrientation() {
   if (!isMobile) return;
@@ -1394,6 +1625,7 @@ document.getElementById('orientation-dismiss').addEventListener('click', () => {
 });
 
 setupTouchControls();
+setupMobileOnboarding();
 checkOrientation();
 window.addEventListener('resize', checkOrientation);
 window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
@@ -1502,9 +1734,8 @@ function spawnCar() {
   const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
   const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
 
-  const difficulty = Math.min(gameTime / 120, 1);
-  const speedBonus = difficulty * 10;
-  const targetSpeed = CONFIG.carMinSpeed + speedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+  const difficulty = getDifficultyState();
+  const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
 
   // Start slightly past 0 with randomness to avoid collisions at spawn
   const startProgress = 1 + Math.random() * 8;
@@ -1749,11 +1980,31 @@ function updatePlayer(dt) {
   for (const other of cars) {
     if (other === playerCar || other.isPlayer) continue;
     if (other.lane !== playerCar.lane) continue;
-    const gap = playerCar.progress - other.progress;
-    const absGap = Math.abs(gap);
-    const wrapGap = playerCar.lane.length - absGap;
-    const minGap = Math.min(absGap, wrapGap);
-    if (minGap < (playerCar.length + other.length) * 0.45) {
+    const laneLength = playerCar.lane.length;
+    const collisionGap = (playerCar.length + other.length) * 0.45;
+    const distanceToOtherAhead = (other.progress - playerCar.progress + laneLength) % laneLength;
+    const distanceToOtherBehind = (playerCar.progress - other.progress + laneLength) % laneLength;
+    const minGap = Math.min(distanceToOtherAhead, distanceToOtherBehind);
+
+    if (minGap >= collisionGap) continue;
+
+    // Fairness rule: only player-caused crashes end the run. If traffic catches
+    // the player from behind, absorb it by slowing/repositioning the AI car
+    // instead of punishing the player for an unavoidable rear-end collision.
+    if (distanceToOtherBehind < distanceToOtherAhead) {
+      const safeFollowGap = playerCar.length + other.length + 1.5;
+      other.progress = (playerCar.progress - safeFollowGap + laneLength) % laneLength;
+      other.speed = Math.min(other.speed, Math.max(playerCar.speed * 0.9, 0));
+      other.targetSpeed = Math.min(other.targetSpeed, Math.max(playerCar.speed, CONFIG.carMinSpeed));
+      other.slowdownTimer = Math.max(other.slowdownTimer, 0.35);
+
+      const pos = other.lane.start.clone().add(other.lane.dirVec.clone().multiplyScalar(other.progress));
+      pos.y = 0.1;
+      other.mesh.position.copy(pos);
+      continue;
+    }
+
+    if (minGap < collisionGap) {
       triggerGameOver();
       return;
     }
@@ -1867,6 +2118,8 @@ function restartGame() {
   document.getElementById('mph-display').className = 'mph';
   document.getElementById('overspeed-label').classList.remove('active');
   document.getElementById('score').textContent = '0';
+  document.getElementById('difficulty-level').textContent = '1';
+  document.getElementById('difficulty-stat').classList.remove('difficulty-hot', 'difficulty-extreme');
 
   // Reset effects
   document.getElementById('speed-lines').innerHTML = '';
@@ -1893,6 +2146,7 @@ function restartGame() {
 
 function updateCars(dt, simSpeed) {
   const adjustedDt = dt * simSpeed;
+  const difficulty = getDifficultyState();
 
   for (const lane of laneDefs) {
     lane.cars.sort((a, b) => b.progress - a.progress);
@@ -1923,7 +2177,7 @@ function updateCars(dt, simSpeed) {
       if (car.slowdownTimer <= 0) {
         car.slowdownTimer = 0;
       }
-    } else if (Math.random() < CONFIG.slowdownChance) {
+    } else if (Math.random() < difficulty.slowdownChance) {
       car.slowdownTimer = CONFIG.slowdownDuration + Math.random() * 1.0;
       if (car.shockwaveIntensity < 0.01) {
         car.shockwaveIntensity = 0.6 + Math.random() * 0.4;
@@ -2052,7 +2306,8 @@ function updateCars(dt, simSpeed) {
         }
       }
       // 15% chance per second if blocked, 0.5% otherwise
-      const chance = blocked ? 0.15 : 0.005;
+      const laneChangeMultiplier = difficulty.laneChangeChanceMultiplier;
+      const chance = (blocked ? 0.15 : 0.005) * laneChangeMultiplier;
       if (Math.random() < chance * adjustedDt) {
         const otherLane = car.lane === laneDefs[0] ? laneDefs[1] : laneDefs[0];
         const leftSignal = car.lane === laneDefs[1]; // signal toward the other lane
@@ -2145,6 +2400,13 @@ window.addEventListener('resize', () => {
 let lastTime = 0;
 
 function animate(time) {
+  if (mobileOnboardingActive) {
+    lastTime = time;
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+    return;
+  }
+
   if (gameOver) {
     // Animate fire
     const dt = 0.016; // ~60fps approximation for orbit
@@ -2178,14 +2440,11 @@ function animate(time) {
   if (!gameOver) gameTime += dt;
 
   // Spawn AI cars — difficulty scales with gameTime
-  const difficulty = Math.min(gameTime / 120, 1); // ramps up over 2 minutes
+  const difficulty = getDifficultyState();
   spawnTimer += dt;
-  const spawnInterval = CONFIG.spawnIntervalBase * (1 - difficulty * 0.75); // 1.2s → 0.3s
-  const maxCars = Math.floor(40 + difficulty * 80); // 40 → 120
-  const spawnBatch = Math.floor(3 + difficulty * 3); // 3 → 6 cars per batch
-  if (spawnTimer >= spawnInterval && cars.length < maxCars) {
+  if (spawnTimer >= difficulty.spawnInterval && cars.length < difficulty.maxCars) {
     spawnTimer = 0;
-    for (let a = 0; a < spawnBatch; a++) {
+    for (let a = 0; a < difficulty.spawnAttempts; a++) {
       if (spawnCar() !== null) break;
     }
   }
@@ -2244,6 +2503,10 @@ function animate(time) {
   }
 
   document.getElementById('car-count').textContent = cars.length;
+  document.getElementById('difficulty-level').textContent = difficulty.level;
+  const difficultyStat = document.getElementById('difficulty-stat');
+  difficultyStat.classList.toggle('difficulty-hot', difficulty.level >= 5 && difficulty.level < 8);
+  difficultyStat.classList.toggle('difficulty-extreme', difficulty.level >= 8);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -2257,9 +2520,8 @@ function spawnInitialCars(count) {
     const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
     const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
     const { group: mesh, taillightMats, turnSignalMats } = createCarModel(color);
-    const difficulty = Math.min(gameTime / 120, 1);
-    const speedBonus = difficulty * 10;
-    const targetSpeed = CONFIG.carMinSpeed + speedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+    const difficulty = getDifficultyState();
+    const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
 
     // Random starting position spread across the lane
     const startProgress = 10 + Math.random() * (lane.length * 0.85);
