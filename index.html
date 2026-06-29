@@ -899,6 +899,60 @@ function getDifficultyState() {
   };
 }
 
+function getRoadCurveZ(x) {
+  const length = CONFIG.roadLength;
+  const t = (x + length / 2) / length;
+  return Math.sin(t * Math.PI * 2 * 2) * 10 + Math.sin(t * Math.PI * 2 * 5 + 0.7) * 4;
+}
+
+function getRoadCurveSlope(x) {
+  const length = CONFIG.roadLength;
+  const t = (x + length / 2) / length;
+  return (
+    Math.cos(t * Math.PI * 2 * 2) * 10 * Math.PI * 2 * 2 / length +
+    Math.cos(t * Math.PI * 2 * 5 + 0.7) * 4 * Math.PI * 2 * 5 / length
+  );
+}
+
+function getLanePosition(lane, progress, y = 0.1) {
+  const x = lane.start.x + lane.dirVec.x * progress;
+  return new THREE.Vector3(x, y, getRoadCurveZ(x) + lane.baseZ);
+}
+
+function getLaneDirection(lane, progress) {
+  const x = lane.start.x + lane.dirVec.x * progress;
+  return new THREE.Vector3(lane.dirVec.x, 0, getRoadCurveSlope(x) * lane.dirVec.x).normalize();
+}
+
+function orientCarToLane(car, lerpAmount = 1) {
+  const forward = new THREE.Vector3(0, 0, 1);
+  const targetQuat = new THREE.Quaternion().setFromUnitVectors(forward, getLaneDirection(car.lane, car.progress));
+  if (lerpAmount >= 1) {
+    car.mesh.quaternion.copy(targetQuat);
+  } else {
+    car.mesh.quaternion.slerp(targetQuat, lerpAmount);
+  }
+}
+
+function createCurvedStripGeometry(length, width, zOffset = 0, segments = 180) {
+  const vertices = [];
+  const indices = [];
+  for (let i = 0; i <= segments; i++) {
+    const x = -length / 2 + (i / segments) * length;
+    const centerZ = getRoadCurveZ(x) + zOffset;
+    vertices.push(x, 0, centerZ - width / 2, x, 0, centerZ + width / 2);
+    if (i < segments) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 // ============================================================
 //  AUDIO SYSTEM — procedural sounds via Web Audio API
 // ============================================================
@@ -1008,11 +1062,10 @@ function buildTunnelRoad() {
   const length = CONFIG.roadLength;
   const halfW = CONFIG.roadHalfWidth;
 
-  // Road surface
+  // Road surface — curved strip following the route centerline
   const roadMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.85, metalness: 0.05 });
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(length, halfW * 2), roadMat);
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(0, 0, 0);
+  const road = new THREE.Mesh(createCurvedStripGeometry(length, halfW * 2, 0), roadMat);
+  road.position.y = 0;
   road.receiveShadow = true;
   worldGroup.add(road);
 
@@ -1026,12 +1079,10 @@ function buildTunnelRoad() {
       const dashLen = 2.0, gapLen = 2.5;
       const cyclePos = ((pos + length / 2) % (dashLen + gapLen));
       if (cyclePos > dashLen) continue;
-      const dash = new THREE.Mesh(
-        new THREE.PlaneGeometry(dashLen, 0.15),
-        lineMat
-      );
+      const dash = new THREE.Mesh(new THREE.PlaneGeometry(dashLen, 0.15), lineMat);
       dash.rotation.x = -Math.PI / 2;
-      dash.position.set(pos, 0.01, offset);
+      dash.rotation.z = Math.atan(getRoadCurveSlope(pos));
+      dash.position.set(pos, 0.01, getRoadCurveZ(pos) + offset);
       worldGroup.add(dash);
     }
   }
@@ -1039,22 +1090,18 @@ function buildTunnelRoad() {
   // Edge lines (solid)
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
   for (const side of [-1, 1]) {
-    const edge = new THREE.Mesh(
-      new THREE.PlaneGeometry(length, 0.2),
-      edgeMat
-    );
-    edge.rotation.x = -Math.PI / 2;
-    edge.position.set(0, 0.015, side * (halfW - 0.15));
+    const edge = new THREE.Mesh(createCurvedStripGeometry(length, 0.2, side * (halfW - 0.15)), edgeMat);
+    edge.position.y = 0.015;
     worldGroup.add(edge);
   }
 
   // Sidewalks / kerbs
   for (const side of [-1, 1]) {
     const sw = new THREE.Mesh(
-      new THREE.BoxGeometry(length, 0.15, 0.8),
+      createCurvedStripGeometry(length, 0.8, side * (halfW + 0.4)),
       new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 })
     );
-    sw.position.set(0, 0.075, side * (halfW + 0.4));
+    sw.position.y = 0.075;
     sw.receiveShadow = true;
     worldGroup.add(sw);
   }
@@ -1071,7 +1118,8 @@ function buildTunnelRoad() {
   });
   const studInstanced = new THREE.InstancedMesh(studGeo, studMat, studCount);
   for (let i = 0; i < studCount; i++) {
-    studDummy.position.set(-length / 2 + 3 + i * 4, 0.04, 0);
+    const x = -length / 2 + 3 + i * 4;
+    studDummy.position.set(x, 0.04, getRoadCurveZ(x));
     studDummy.scale.set(1, 1, 1);
     studDummy.updateMatrix();
     studInstanced.setMatrixAt(i, studDummy.matrix);
@@ -1087,8 +1135,9 @@ function buildTunnelRoad() {
   for (let i = 0; i < 2; i++) {
     laneDefs.push({
       id: `lane_w${i}`, road: 'x', dir: [-1,0,0],
-      start: new THREE.Vector3(endX,   0, laneZs[i]),
-      end:   new THREE.Vector3(startX, 0, laneZs[i]),
+      baseZ: laneZs[i],
+      start: new THREE.Vector3(endX,   0, getRoadCurveZ(endX) + laneZs[i]),
+      end:   new THREE.Vector3(startX, 0, getRoadCurveZ(startX) + laneZs[i]),
     });
   }
 }
@@ -1096,7 +1145,7 @@ function buildTunnelRoad() {
 function finalizeLanes() {
   for (const def of laneDefs) {
     def.dirVec = new THREE.Vector3(def.dir[0], def.dir[1], def.dir[2]);
-    def.length = def.start.distanceTo(def.end);
+    def.length = CONFIG.roadLength;
     def.cars = [];
   }
 }
@@ -1115,17 +1164,15 @@ function buildScenicRoute() {
   const vergeMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.95 });
   const grassVergeMat = new THREE.MeshStandardMaterial({ color: 0x5a8240, roughness: 0.85 });
   for (const side of [-1, 1]) {
-    // Dirt verge — single plane
-    const verge = new THREE.Mesh(new THREE.PlaneGeometry(length, 1.5), vergeMat);
-    verge.rotation.x = -Math.PI / 2;
-    verge.position.set(0, -0.06, side * (halfW + 0.75));
+    // Dirt verge — curved strip matching the road bend
+    const verge = new THREE.Mesh(createCurvedStripGeometry(length, 1.5, side * (halfW + 0.75)), vergeMat);
+    verge.position.y = -0.06;
     verge.receiveShadow = true;
     worldGroup.add(verge);
 
-    // Grass strip — single plane
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(length, 4.5), grassVergeMat);
-    grass.rotation.x = -Math.PI / 2;
-    grass.position.set(0, -0.04, side * (halfW + 2.75));
+    // Grass strip — curved strip matching the road bend
+    const grass = new THREE.Mesh(createCurvedStripGeometry(length, 4.5, side * (halfW + 2.75)), grassVergeMat);
+    grass.position.y = -0.04;
     grass.receiveShadow = true;
     worldGroup.add(grass);
   }
@@ -1150,12 +1197,15 @@ function buildScenicRoute() {
     const z = side * (halfW + 0.7);
     for (let pi = 0; pi < postsPerSide; pi++) {
       const x = -length / 2 + pi * postSpacing;
-      dummy3.position.set(x, 0.45, z);
+      const curveZ = getRoadCurveZ(x);
+      const yaw = Math.atan(getRoadCurveSlope(x));
+      dummy3.rotation.set(0, yaw, 0);
+      dummy3.position.set(x, 0.45, curveZ + z);
       dummy3.scale.set(1, 1, 1);
       dummy3.updateMatrix();
       postInstanced.setMatrixAt(idx, dummy3.matrix);
       
-      dummy3.position.set(x, 0.85, z);
+      dummy3.position.set(x, 0.85, curveZ + z);
       dummy3.updateMatrix();
       railInstanced.setMatrixAt(idx, dummy3.matrix);
       idx++;
@@ -1177,7 +1227,8 @@ function buildScenicRoute() {
 
     for (const side of [-1, 1]) {
       const distFromRoad = 5 + Math.random() * 8;
-      const z = side * (halfW + distFromRoad);
+      const treeX = x + jitterX;
+      const z = getRoadCurveZ(treeX) + side * (halfW + distFromRoad);
       const treeH = 1.5 + Math.random() * 3.5;
       const isDeciduous = Math.random() > 0.4;
       const isAutumn = isDeciduous && Math.random() > 0.7;
@@ -1188,7 +1239,7 @@ function buildScenicRoute() {
           new THREE.CylinderGeometry(0.12, 0.18, treeH * 0.55, 7),
           trunkMatLight
         );
-        trunk.position.set(x + jitterX, treeH * 0.27, z);
+        trunk.position.set(treeX, treeH * 0.27, z);
         trunk.castShadow = true;
         worldGroup.add(trunk);
 
@@ -1203,7 +1254,7 @@ function buildScenicRoute() {
             })
           );
           canopy.position.set(
-            x + jitterX + (Math.random() - 0.5) * 0.3,
+            treeX + (Math.random() - 0.5) * 0.3,
             treeH * 0.6 + s * treeH * 0.12,
             z + (Math.random() - 0.5) * 0.3
           );
@@ -1216,7 +1267,7 @@ function buildScenicRoute() {
           new THREE.CylinderGeometry(0.15, 0.2, treeH * 0.5, 6),
           trunkMat
         );
-        trunk.position.set(x + jitterX, treeH * 0.25, z);
+        trunk.position.set(treeX, treeH * 0.25, z);
         trunk.castShadow = true;
         worldGroup.add(trunk);
 
@@ -1230,7 +1281,7 @@ function buildScenicRoute() {
               roughness: 0.7,
             })
           );
-          cone.position.set(x + jitterX, treeH * 0.45 + layer * coneH * 0.55, z);
+          cone.position.set(treeX, treeH * 0.45 + layer * coneH * 0.55, z);
           cone.castShadow = true;
           worldGroup.add(cone);
         }
@@ -1241,7 +1292,7 @@ function buildScenicRoute() {
   // ---- Distant mountains with depth gradient ----
   for (let i = 0; i < PERF.mountainCount; i++) {
     const mx = (Math.random() - 0.5) * length;
-    const mz = (Math.random() > 0.5 ? 1 : -1) * (22 + Math.random() * 45);
+    const mz = getRoadCurveZ(mx) + (Math.random() > 0.5 ? 1 : -1) * (28 + Math.random() * 50);
     const mh = 15 + Math.random() * 40;
     const mr = mh * 0.55 + Math.random() * 8;
     // Depth: closer = brown, further = blue-grey (atmospheric perspective)
@@ -1276,7 +1327,7 @@ function buildScenicRoute() {
   for (let i = 0; i < PERF.bushCount / 3; i++) {
     const bx = (Math.random() - 0.5) * length;
     const bside = Math.random() > 0.5 ? 1 : -1;
-    const bz = bside * (halfW + 3 + Math.random() * 20);
+    const bz = getRoadCurveZ(bx) + bside * (halfW + 3 + Math.random() * 20);
     const clusterSize = 2 + Math.floor(Math.random() * 3);
     for (let j = 0; j < clusterSize && bushIdx < bushCount; j++) {
       dummy.position.set(
@@ -1311,7 +1362,7 @@ function buildScenicRoute() {
   for (let i = 0; i < flowerCount; i++) {
     const fx = (Math.random() - 0.5) * length;
     const fSide = Math.random() > 0.5 ? 1 : -1;
-    const fz = fSide * (halfW + 1.8 + Math.random() * 3);
+    const fz = getRoadCurveZ(fx) + fSide * (halfW + 1.8 + Math.random() * 3);
     dummy.position.set(fx, 0.08 + Math.random() * 0.1, fz);
     dummy.scale.setScalar(0.6 + Math.random() * 1.0);
     dummy.updateMatrix();
@@ -1345,7 +1396,7 @@ function buildScenicRoute() {
   for (let i = 0; i < PERF.moundCount; i++) {
     const mx = (Math.random() - 0.5) * length;
     const mside = Math.random() > 0.5 ? 1 : -1;
-    const mz = mside * (halfW + 5 + Math.random() * 55);
+    const mz = getRoadCurveZ(mx) + mside * (halfW + 5 + Math.random() * 55);
     const mh = 1 + Math.random() * 4;
     const mr = mh * 1.5 + Math.random() * 3;
     const mound = new THREE.Mesh(
@@ -1375,21 +1426,25 @@ const gateHeight = 4;
 laneDefs.forEach(lane => {
   // Gate at wrap point (200m before lane end)
   const gateX = lane.end.x + lane.dirVec.x * (-200); // lane.dir.x = -1, so +200 from end
-  const gateZ = lane.start.z;
+  const gateZ = getRoadCurveZ(gateX) + lane.baseZ;
+  const gateYaw = Math.atan(getRoadCurveSlope(gateX));
   
   // Arch frame — left pillar
   const pLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, gateHeight, 0.2), gateMat);
   pLeft.position.set(gateX, gateHeight / 2, gateZ - 1.8);
+  pLeft.rotation.y = gateYaw;
   worldGroup.add(pLeft);
   
   // Right pillar
   const pRight = new THREE.Mesh(new THREE.BoxGeometry(0.2, gateHeight, 0.2), gateMat);
   pRight.position.set(gateX, gateHeight / 2, gateZ + 1.8);
+  pRight.rotation.y = gateYaw;
   worldGroup.add(pRight);
   
   // Top beam
   const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 3.8), gateMat);
   top.position.set(gateX, gateHeight, gateZ);
+  top.rotation.y = gateYaw;
   worldGroup.add(top);
 });
 
@@ -1552,12 +1607,8 @@ function createPlayerCar() {
     laneChangeTimer: 0,
   };
 
-  const pos = lane.start.clone().add(lane.dirVec.clone().multiplyScalar(car.progress));
-  pos.y = 0.1;
-  mesh.position.copy(pos);
-
-  const forward = new THREE.Vector3(0, 0, 1);
-  mesh.quaternion.setFromUnitVectors(forward, lane.dirVec);
+  mesh.position.copy(getLanePosition(lane, car.progress));
+  orientCarToLane(car);
 
   scene.add(mesh);
   lane.cars.push(car);
@@ -1736,11 +1787,8 @@ function reverseDirection() {
   // Mirror all car progress
   for (const car of cars) {
     car.progress = car.lane.length - car.progress;
-    const pos = car.lane.start.clone().add(car.lane.dirVec.clone().multiplyScalar(car.progress));
-    pos.y = 0.1;
-    car.mesh.position.copy(pos);
-    const forward = new THREE.Vector3(0, 0, 1);
-    car.mesh.quaternion.setFromUnitVectors(forward, car.lane.dirVec);
+    car.mesh.position.copy(getLanePosition(car.lane, car.progress));
+    orientCarToLane(car);
   }
 
   // Update score tracking
@@ -1762,7 +1810,7 @@ function toggleView() {
   console.log(`👁️ Toggled view → ${viewMode} | controls: ${controls.enabled ? 'enabled' : 'disabled'}`);
   if (viewMode === 'top' && playerCar) {
     const pos = playerCar.mesh.position.clone();
-    const dir = playerCar.lane.dirVec.clone();
+    const dir = getLaneDirection(playerCar.lane, playerCar.progress);
     camera.position.copy(pos.clone().add(dir.clone().multiplyScalar(-chaseDistance)).add(new THREE.Vector3(0, chaseDistance * 0.7, 0)));
     camera.lookAt(pos);
   }
@@ -1868,12 +1916,8 @@ function spawnCar() {
     return null;
   }
 
-  const pos = lane.start.clone().add(lane.dirVec.clone().multiplyScalar(startProgress));
-  pos.y = 0.1;
-  mesh.position.copy(pos);
-
-  const forward = new THREE.Vector3(0, 0, 1);
-  mesh.quaternion.setFromUnitVectors(forward, lane.dirVec);
+  mesh.position.copy(getLanePosition(lane, car.progress));
+  orientCarToLane(car);
 
   scene.add(mesh);
   lane.cars.push(car);
@@ -1980,9 +2024,7 @@ function updatePlayer(dt) {
   lastProgress = playerCar.progress;
 
   // Update mesh position
-  const targetPos = playerCar.lane.start.clone()
-    .add(playerCar.lane.dirVec.clone().multiplyScalar(playerCar.progress));
-  targetPos.y = 0.1;
+  const targetPos = getLanePosition(playerCar.lane, playerCar.progress);
   const dist = playerCar.mesh.position.distanceTo(targetPos);
   if (dist > 100) {
     playerCar.mesh.position.copy(targetPos);  // instant snap on wrap
@@ -2026,9 +2068,7 @@ function updatePlayer(dt) {
     }
   }
 
-  const forward = new THREE.Vector3(0, 0, 1);
-  const targetQuat = new THREE.Quaternion().setFromUnitVectors(forward, playerCar.lane.dirVec);
-  playerCar.mesh.quaternion.slerp(targetQuat, 0.2);
+  orientCarToLane(playerCar, 0.2);
 
   // Horn — if AI car is close behind and we're too slow
   hornTimer = Math.max(0, hornTimer - dt);
@@ -2075,9 +2115,8 @@ function updatePlayer(dt) {
       other.targetSpeed = Math.min(other.targetSpeed, Math.max(playerCar.speed, CONFIG.carMinSpeed));
       other.slowdownTimer = Math.max(other.slowdownTimer, 0.35);
 
-      const pos = other.lane.start.clone().add(other.lane.dirVec.clone().multiplyScalar(other.progress));
-      pos.y = 0.1;
-      other.mesh.position.copy(pos);
+      other.mesh.position.copy(getLanePosition(other.lane, other.progress));
+      orientCarToLane(other);
       continue;
     }
 
@@ -2214,7 +2253,7 @@ function restartGame() {
   // Snap camera to player
   if (viewMode === 'top') {
     const startPos = playerCar.mesh.position.clone();
-    const startDir = playerCar.lane.dirVec.clone();
+    const startDir = getLaneDirection(playerCar.lane, playerCar.progress);
     const camStart = startPos.clone()
       .add(startDir.clone().multiplyScalar(-chaseDistance))
       .add(new THREE.Vector3(0, chaseDistance * 0.7, 0));
@@ -2364,13 +2403,8 @@ function updateCars(dt, simSpeed) {
     }
 
     // Update mesh
-    const pos = lane.start.clone().add(lane.dirVec.clone().multiplyScalar(car.progress));
-    pos.y = 0.1;
-    car.mesh.position.copy(pos);
-
-    const forward = new THREE.Vector3(0, 0, 1);
-    const targetQuat = new THREE.Quaternion().setFromUnitVectors(forward, lane.dirVec);
-    car.mesh.quaternion.slerp(targetQuat, 0.15);
+    car.mesh.position.copy(getLanePosition(lane, car.progress));
+    orientCarToLane(car, 0.15);
 
     // ---- Lane change AI ----
     car.laneChangeCooldown = Math.max(0, car.laneChangeCooldown - adjustedDt);
@@ -2458,10 +2492,8 @@ function resolveCollisions() {
   // Sync AI mesh positions (skip player)
   for (const car of cars) {
     if (car.isPlayer) continue;
-    const pos = car.lane.start.clone()
-      .add(car.lane.dirVec.clone().multiplyScalar(car.progress));
-    pos.y = 0.1;
-    car.mesh.position.copy(pos);
+    car.mesh.position.copy(getLanePosition(car.lane, car.progress));
+    orientCarToLane(car, 0.2);
   }
 }
 
@@ -2560,7 +2592,7 @@ function animate(time) {
     if (viewMode === 'fpv') {
       // First-person view behind the player car
       const pos = playerCar.mesh.position.clone();
-      const dir = playerCar.lane.dirVec.clone();
+      const dir = getLaneDirection(playerCar.lane, playerCar.progress);
       // Position camera behind and above the car
       const camPos = pos.clone()
         .add(dir.clone().multiplyScalar(-8))  // 8m behind
@@ -2574,7 +2606,7 @@ function animate(time) {
     } else {
       // Top-down chase cam — follow behind and above the player
       const pos = playerCar.mesh.position.clone();
-      const dir = playerCar.lane.dirVec.clone();
+      const dir = getLaneDirection(playerCar.lane, playerCar.progress);
       const idealPos = pos.clone()
         .add(dir.clone().multiplyScalar(-chaseDistance))
         .add(new THREE.Vector3(0, chaseDistance * 0.7, 0));
@@ -2632,12 +2664,8 @@ function spawnInitialCars(count) {
       laneChangeCooldown: 0,
     };
 
-    const pos = lane.start.clone().add(lane.dirVec.clone().multiplyScalar(startProgress));
-    pos.y = 0.1;
-    mesh.position.copy(pos);
-
-    const forward = new THREE.Vector3(0, 0, 1);
-    mesh.quaternion.setFromUnitVectors(forward, lane.dirVec);
+    mesh.position.copy(getLanePosition(lane, car.progress));
+    orientCarToLane(car);
 
     scene.add(mesh);
     lane.cars.push(car);
@@ -2653,13 +2681,13 @@ spawnInitialCars(20);
 // Snap camera to player immediately
 if (viewMode === 'top') {
   const startPos = playerCar.mesh.position.clone();
-  const startDir = playerCar.lane.dirVec.clone();
+  const startDir = getLaneDirection(playerCar.lane, playerCar.progress);
   camera.position.copy(startPos.clone().add(startDir.clone().multiplyScalar(-chaseDistance)).add(new THREE.Vector3(0, chaseDistance * 0.7, 0)));
   camera.lookAt(startPos);
 } else {
   // FPV — snap behind the car
   const startPos = playerCar.mesh.position.clone();
-  const startDir = playerCar.lane.dirVec.clone();
+  const startDir = getLaneDirection(playerCar.lane, playerCar.progress);
   camera.position.copy(startPos.clone().add(startDir.clone().multiplyScalar(-8)).add(new THREE.Vector3(0, 4, 0)));
   camera.lookAt(startPos.clone().add(startDir.clone().multiplyScalar(30)).add(new THREE.Vector3(0, 1.5, 0)));
 }
