@@ -1,6 +1,6 @@
 # 🏎️ Highway Runner
 
-A 3D driving game built with **Three.js**. Cruise along a scenic mountain highway, navigate traffic, and survive as long as you can — the longer you drive, the harder it gets.
+A browser-based 3D driving game built with **Three.js**. Race along a bending mountain highway, navigate adaptive AI traffic, and survive as the day fades into night.
 
 ![Highway Runner Screenshot](screenshot.jpg)
 
@@ -14,7 +14,7 @@ A 3D driving game built with **Three.js**. Cruise along a scenic mountain highwa
 | **D** / **→** | Move right lane |
 | **V** | Toggle view (FPV / Top-Down) |
 | **R** | Reverse direction |
-| **N** | Toggle Day / Night |
+| **N** | Skip ahead in the day/night cycle |
 
 - **Score**: Distance traveled in meters — displayed at the top.
 - **Speed**: MPH gauge in the bottom-right corner.
@@ -38,21 +38,19 @@ Orientation: landscape recommended for the best field of view.
 
 ## 🚗 Features
 
-- **Open-world scenic highway** — trees, mountains, wildflowers, guardrails, and rolling hills (no tunnel)
+- **Curved scenic highway** — trees, mountains, wildflowers, guardrails, and rolling hills
 - **AI traffic** — cars speed up, slow down, change lanes, and create braking shockwaves
 - **Dynamic difficulty** — traffic intensity ramps smoothly over 3 minutes across 10 visible levels
-- **Realistic braking** — brake lights glow when cars decelerate
+- **Adaptive lighting** — headlights and brake lights brighten naturally after sunset
 - **Two camera modes**: Third-person FPV chase cam & top-down orbital view
-- **Day / Night cycle** — toggle between bright daylight and dark nighttime driving
-- **Speed-based scoring** — drive faster and farther for a higher score
-- **Responsive UI** — works on desktop and mobile browsers with touch controls
+- **Looping day/night cycle** — the world starts at a random time of day and transitions continuously
+- **Mobile-ready controls** — touch zones and first-run onboarding for phones
 - **Procedural audio** — engine growl, brake hiss, crash impact, and horn sounds via Web Audio API
 
 ## 🛠️ Tech Stack
 
 - [Three.js](https://threejs.org/) — 3D rendering
-- OrbitControls — camera manipulation
-- Vanilla JavaScript (ES Modules) — game logic, AI, difficulty system
+- Vanilla JavaScript (ES Modules) — game logic, AI, difficulty, and rendering setup
 - No build tools required — runs directly in the browser
 
 ## 🚀 Getting Started
@@ -72,4 +70,4 @@ python3 -m http.server 8080
 
 ## 📄 License
 
-MIT
+[MIT](LICENSE)
