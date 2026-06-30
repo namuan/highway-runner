@@ -6,15 +6,15 @@ A browser-based 3D driving game built with **Three.js**. Race along a bending mo
 
 ## 🎮 How to Play
 
-| Key | Action |
-|---|---|
-| **W** / **↑** | Accelerate |
-| **S** / **↓** / **Space** | Brake |
-| **A** / **←** | Move left lane |
-| **D** / **→** | Move right lane |
-| **V** | Toggle view (FPV / Top-Down) |
-| **R** | Reverse direction |
-| **N** | Skip ahead in the day/night cycle |
+| Key                       | Action                            |
+| ------------------------- | --------------------------------- |
+| **W** / **↑**             | Accelerate                        |
+| **S** / **↓** / **Space** | Brake                             |
+| **A** / **←**             | Move left lane                    |
+| **D** / **→**             | Move right lane                   |
+| **V**                     | Toggle view (FPV / Top-Down)      |
+| **R**                     | Reverse direction                 |
+| **N**                     | Skip ahead in the day/night cycle |
 
 - **Score**: Distance traveled in meters — displayed at the top.
 - **Speed**: MPH gauge in the bottom-right corner.
@@ -26,13 +26,13 @@ A browser-based 3D driving game built with **Three.js**. Race along a bending mo
 
 Tap zones on the screen — no keyboard needed (first-time players see an onboarding guide):
 
-| Zone | Action |
-|---|---|
-| Left half (tap left/right side) | Lane change ◀ / ▶ |
-| Upper-right (hold) | Accelerate |
-| Lower-right (hold) | Brake |
-| Double-tap center | Toggle controls panel |
-| Long press (1.2s on game over) | Restart |
+| Zone                            | Action                |
+| ------------------------------- | --------------------- |
+| Left half (tap left/right side) | Lane change ◀ / ▶     |
+| Upper-right (hold)              | Accelerate            |
+| Lower-right (hold)              | Brake                 |
+| Double-tap center               | Toggle controls panel |
+| Long press (1.2s on game over)  | Restart               |
 
 Orientation: landscape recommended for the best field of view.
 
