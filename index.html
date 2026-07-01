@@ -573,6 +573,10 @@
     .btn:active { background: rgba(255,255,255,0.2); color: #fff; }
     .btn-primary:active { opacity: 0.8; }
   }
+
+  /* Applied by JS device detection; avoids relying only on viewport media queries. */
+  #controls.mobile-controls { display: none !important; }
+  #controls.mobile-controls.visible { display: flex !important; }
 </style>
 </head>
 <body>
@@ -1697,6 +1701,8 @@ function setupTouchControls() {
   const tc = document.getElementById('touch-controls');
   const mobileControls = document.getElementById('controls');
   tc.style.display = 'block';
+  mobileControls.classList.add('mobile-controls');
+  mobileControls.classList.remove('visible');
   // Show mobile controls hint, hide desktop
   mobileControls.querySelector('span').textContent = '⚙️ Tap for controls';
 
