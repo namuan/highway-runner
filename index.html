@@ -586,6 +586,7 @@
   <div id="top-bar">
     <span class="title">🏎️ Highway Runner</span>
     <span class="stat">📏 <span class="value" id="score">0</span>m</span>
+    <span class="stat">⏱ <span class="value" id="time-display">00:00</span></span>
     <span class="stat">🚗 <span class="value" id="car-count">0</span></span>
     <span class="stat" id="difficulty-stat">🔥 <span class="value" id="difficulty-level">1</span></span>
   </div>
@@ -614,6 +615,7 @@
   <div id="game-over">
     <h2>💥 CRASH</h2>
     <div class="final-score">Distance: <span id="final-score">0</span> m</div>
+    <div class="final-score">Time: <span id="final-time">00:00</span></div>
     <button class="btn btn-primary" id="btn-restart">🔄 Play Again</button>
   </div>
 
@@ -828,6 +830,7 @@ let playerCar = null;
 let gameOver = false;
 let score = 0;
 let gameTime = 0;        // elapsed game time (seconds)
+let timerStarted = false;
 let lastProgress = 0;
 let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDayPhase = Math.random(); // 0..1, randomized so each run starts at a different time of day
@@ -837,6 +840,14 @@ let chaseDistance = 3;
 let mobileOnboardingActive = false;
 // Keyboard state
 const keys = { ' ': false, arrowup: false, arrowdown: false, arrowleft: false, arrowright: false };
+
+// Format elapsed seconds as mm:ss
+function formatTime(totalSeconds) {
+  const totalSec = Math.floor(Math.max(0, totalSeconds));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 const RL = CONFIG.roadHalfWidth;
 const LW = CONFIG.laneWidth;
@@ -2033,6 +2044,7 @@ function updatePlayer(dt) {
   if (!playerCar || gameOver) return;
 
   // Lane switching (with cooldown)
+  let laneChanged = false;
   if (playerCar.laneChangeTimer > 0) {
     playerCar.laneChangeTimer -= dt;
   } else {
@@ -2048,9 +2060,11 @@ function updatePlayer(dt) {
     if (isLeft() && playerCar.lane !== leftLane) {
       playerCar.lane = leftLane;
       playerCar.laneChangeTimer = 0.3;
+      laneChanged = true;
     } else if (isRight() && playerCar.lane !== rightLane) {
       playerCar.lane = rightLane;
       playerCar.laneChangeTimer = 0.3;
+      laneChanged = true;
     }
   }
 
@@ -2063,6 +2077,10 @@ function updatePlayer(dt) {
   } else {
     // Gentle natural deceleration (engine braking)
     playerCar.speed = Math.max(playerCar.speed - 2 * dt, 0);
+  }
+
+  if (!timerStarted && (playerCar.speed > 0 || laneChanged)) {
+    timerStarted = true;
   }
 
   // Engine sound
@@ -2207,6 +2225,7 @@ function updatePlayer(dt) {
   mphEl.className = 'mph' + (isOverspeed ? ' overspeed' : mph < CONFIG.minSafeSpeed ? ' warn' : '');
   document.getElementById('overspeed-label').classList.toggle('active', isOverspeed);
   document.getElementById('score').textContent = Math.round(score);
+  document.getElementById('time-display').textContent = formatTime(gameTime);
   // Lane indicator — account for car direction
   if (playerCar) {
     const leftVec = new THREE.Vector3().crossVectors(
@@ -2270,6 +2289,7 @@ function triggerGameOver() {
   // Show game over with a 3-second delay — enjoy the fire
   setTimeout(() => {
     document.getElementById('final-score').textContent = Math.round(score);
+    document.getElementById('final-time').textContent = formatTime(gameTime);
     document.getElementById('game-over').classList.add('active');
   }, 3000);
 }
@@ -2294,6 +2314,7 @@ function restartGame() {
   gameOver = false;
   score = 0;
   gameTime = 0;
+  timerStarted = false;
   lastProgress = 0;
   spawnTimer = 0;
   timeOfDayPhase = Math.random();
@@ -2310,6 +2331,8 @@ function restartGame() {
   document.getElementById('mph-display').className = 'mph';
   document.getElementById('overspeed-label').classList.remove('active');
   document.getElementById('score').textContent = '0';
+  document.getElementById('time-display').textContent = formatTime(gameTime);
+  document.getElementById('final-time').textContent = formatTime(gameTime);
   document.getElementById('difficulty-level').textContent = '1';
   document.getElementById('difficulty-stat').classList.remove('difficulty-hot', 'difficulty-extreme');
 
@@ -2623,7 +2646,7 @@ function animate(time) {
 
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
-  if (!gameOver) gameTime += dt;
+  if (!gameOver && timerStarted) gameTime += dt;
   updateTimeOfDay(dt);
 
   // Spawn AI cars — difficulty scales with gameTime
