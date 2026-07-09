@@ -738,6 +738,8 @@ const CONFIG = {
   // Random slowdown events trigger braking shockwaves
   slowdownChance: 0.0004,
   slowdownDuration: 2.5,
+  aiLaneChangeBlinkDuration: 3.0,
+  aiLaneChangeTransitionDuration: 1.2,
   // Player car
   playerColor: 0x00ccff,
   playerAccel: 14,
@@ -988,9 +990,46 @@ function getLaneDirection(lane, progress) {
   return new THREE.Vector3(lane.dirVec.x, 0, getRoadCurveSlope(x) * lane.dirVec.x).normalize();
 }
 
+function getLaneChangeProgress(car) {
+  if (!car.laneChange || car.laneChange.phase !== 'transition') return 1;
+  const rawProgress = 1 - (car.laneChange.timer / car.laneChange.duration);
+  const clamped = Math.max(0, Math.min(rawProgress, 1));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+function getCarLanePosition(car, y = 0.1) {
+  if (!car.laneChange || car.laneChange.phase !== 'transition') {
+    return getLanePosition(car.lane, car.progress, y);
+  }
+
+  const fromPos = getLanePosition(car.laneChange.sourceLane, car.progress, y);
+  const toPos = getLanePosition(car.laneChange.targetLane, car.progress, y);
+  return fromPos.lerp(toPos, getLaneChangeProgress(car));
+}
+
+function getCarLaneDirection(car) {
+  if (!car.laneChange || car.laneChange.phase !== 'transition') {
+    return getLaneDirection(car.lane, car.progress);
+  }
+
+  const fromDir = getLaneDirection(car.laneChange.sourceLane, car.progress);
+  const toDir = getLaneDirection(car.laneChange.targetLane, car.progress);
+  return fromDir.lerp(toDir, getLaneChangeProgress(car)).normalize();
+}
+
+function hasLaneChangeSpace(car, targetLane, clearanceMultiplier = 3.5) {
+  for (const other of cars) {
+    if (other === car || other.lane !== targetLane) continue;
+    let dist = Math.abs(other.progress - car.progress);
+    if (dist > targetLane.length * 0.5) dist = targetLane.length - dist;
+    if (dist < car.length * clearanceMultiplier) return false;
+  }
+  return true;
+}
+
 function orientCarToLane(car, lerpAmount = 1) {
   const forward = new THREE.Vector3(0, 0, 1);
-  const targetQuat = new THREE.Quaternion().setFromUnitVectors(forward, getLaneDirection(car.lane, car.progress));
+  const targetQuat = new THREE.Quaternion().setFromUnitVectors(forward, getCarLaneDirection(car));
   if (lerpAmount >= 1) {
     car.mesh.quaternion.copy(targetQuat);
   } else {
@@ -1630,15 +1669,19 @@ function createCarModel(color) {
     taillightMats.push(tlMat);
   }
 
-  // Turn signals — amber lights at front corners
-  const tsGeo = new THREE.BoxGeometry(0.12, 0.06, 0.04);
+  // Turn signals — larger amber lights at front and rear corners for visibility
+  const tsGeo = new THREE.BoxGeometry(0.24, 0.12, 0.08);
   for (const side of [-1, 1]) {
     const tsMat = new THREE.MeshStandardMaterial({
-      color: 0xff8800, emissive: 0xff8800, emissiveIntensity: 0.0
+      color: 0xffaa00, emissive: 0xffaa00, emissiveIntensity: 0.0
     });
-    const ts = new THREE.Mesh(tsGeo, tsMat);
-    ts.position.set(side * CONFIG.carWidth * 0.45, CONFIG.carBodyHeight * 0.55, CONFIG.carLength / 2);
-    group.add(ts);
+    const tsFront = new THREE.Mesh(tsGeo, tsMat);
+    tsFront.position.set(side * CONFIG.carWidth * 0.48, CONFIG.carBodyHeight * 0.6, CONFIG.carLength / 2 + 0.02);
+    group.add(tsFront);
+
+    const tsRear = new THREE.Mesh(tsGeo.clone(), tsMat);
+    tsRear.position.set(side * CONFIG.carWidth * 0.48, CONFIG.carBodyHeight * 0.6, -CONFIG.carLength / 2 - 0.02);
+    group.add(tsRear);
     turnSignalMats.push(tsMat); // index 0 = left (-1), index 1 = right (+1)
   }
 
@@ -1878,7 +1921,7 @@ function reverseDirection() {
   // Mirror all car progress
   for (const car of cars) {
     car.progress = car.lane.length - car.progress;
-    car.mesh.position.copy(getLanePosition(car.lane, car.progress));
+    car.mesh.position.copy(getCarLanePosition(car));
     orientCarToLane(car);
   }
 
@@ -1975,7 +2018,7 @@ function spawnCar() {
     slowdownTimer: 0,
     stuckTimer: 0,
     // Lane change state
-    laneChange: null,      // null | { targetLane, timer, leftSignal }
+    laneChange: null,      // null | { phase, sourceLane, targetLane, timer, duration, leftSignal }
     laneChangeCooldown: 0,
   };
 
@@ -2207,7 +2250,7 @@ function updatePlayer(dt) {
       other.targetSpeed = Math.min(other.targetSpeed, Math.max(playerCar.speed, CONFIG.carMinSpeed));
       other.slowdownTimer = Math.max(other.slowdownTimer, 0.35);
 
-      other.mesh.position.copy(getLanePosition(other.lane, other.progress));
+      other.mesh.position.copy(getCarLanePosition(other));
       orientCarToLane(other);
       continue;
     }
@@ -2500,7 +2543,7 @@ function updateCars(dt, simSpeed) {
     }
 
     // Update mesh
-    car.mesh.position.copy(getLanePosition(lane, car.progress));
+    car.mesh.position.copy(getCarLanePosition(car));
     orientCarToLane(car, 0.15);
 
     // ---- Lane change AI ----
@@ -2524,17 +2567,13 @@ function updateCars(dt, simSpeed) {
         const leftSignal = car.lane === laneDefs[1]; // signal toward the other lane
 
         // Check if target lane has space
-        let spaceClear = true;
-        for (const other of cars) {
-          if (other === car || other.lane !== otherLane) continue;
-          let dist = Math.abs(other.progress - car.progress);
-          if (dist > otherLane.length * 0.5) dist = otherLane.length - dist;
-          if (dist < car.length * 3.5) { spaceClear = false; break; }
-        }
-        if (spaceClear) {
+        if (hasLaneChangeSpace(car, otherLane)) {
           car.laneChange = {
+            phase: 'blink',
+            sourceLane: lane,
             targetLane: otherLane,
-            timer: 1.5,  // ~5 blinks at ~3.3 Hz
+            timer: CONFIG.aiLaneChangeBlinkDuration,
+            duration: CONFIG.aiLaneChangeBlinkDuration,
             leftSignal: leftSignal,
           };
         }
@@ -2544,21 +2583,35 @@ function updateCars(dt, simSpeed) {
     // Execute lane change or blink signals
     if (car.laneChange) {
       car.laneChange.timer -= adjustedDt;
-      const blinkOn = Math.floor(car.laneChange.timer * 3.3) % 2 === 0;
+      const blinkOn = Math.floor(car.laneChange.timer * 4.0) % 2 === 0;
       const sigIdx = car.laneChange.leftSignal ? 0 : 1;
-      car.turnSignalMats[sigIdx].emissiveIntensity = blinkOn ? 1.5 : 0.1;
+      car.turnSignalMats[sigIdx].emissiveIntensity = blinkOn ? 4.0 : 0.35;
       car.turnSignalMats[1 - sigIdx].emissiveIntensity = 0;
-      car.turnSignalMats[sigIdx].color.setHex(blinkOn ? 0xffaa00 : 0x663300);
+      car.turnSignalMats[sigIdx].color.setHex(blinkOn ? 0xffcc00 : 0x996000);
 
       if (car.laneChange.timer <= 0) {
-        // Switch lanes
-        car.lane.cars.splice(car.lane.cars.indexOf(car), 1);
-        car.laneChange.targetLane.cars.push(car);
-        car.lane = car.laneChange.targetLane;
-        car.laneChange = null;
-        car.laneChangeCooldown = 3 + Math.random() * 5;
-        car.turnSignalMats[0].emissiveIntensity = 0;
-        car.turnSignalMats[1].emissiveIntensity = 0;
+        if (car.laneChange.phase === 'blink') {
+          if (!hasLaneChangeSpace(car, car.laneChange.targetLane)) {
+            car.laneChange = null;
+            car.laneChangeCooldown = 1 + Math.random() * 2;
+            car.turnSignalMats[0].emissiveIntensity = 0;
+            car.turnSignalMats[1].emissiveIntensity = 0;
+            continue;
+          }
+
+          // Commit to the target lane, then visually ease across from the source lane.
+          car.lane.cars.splice(car.lane.cars.indexOf(car), 1);
+          car.laneChange.targetLane.cars.push(car);
+          car.lane = car.laneChange.targetLane;
+          car.laneChange.phase = 'transition';
+          car.laneChange.timer = CONFIG.aiLaneChangeTransitionDuration;
+          car.laneChange.duration = CONFIG.aiLaneChangeTransitionDuration;
+        } else {
+          car.laneChange = null;
+          car.laneChangeCooldown = 3 + Math.random() * 5;
+          car.turnSignalMats[0].emissiveIntensity = 0;
+          car.turnSignalMats[1].emissiveIntensity = 0;
+        }
       }
     } else {
       car.turnSignalMats.forEach(m => { m.emissiveIntensity = 0; });
@@ -2589,7 +2642,7 @@ function resolveCollisions() {
   // Sync AI mesh positions (skip player)
   for (const car of cars) {
     if (car.isPlayer) continue;
-    car.mesh.position.copy(getLanePosition(car.lane, car.progress));
+    car.mesh.position.copy(getCarLanePosition(car));
     orientCarToLane(car, 0.2);
   }
 }
