@@ -588,6 +588,7 @@
     <span class="stat">📏 <span class="value" id="score">0</span>m</span>
     <span class="stat">⏱ <span class="value" id="time-display">00:00</span></span>
     <span class="stat">🚗 <span class="value" id="car-count">0</span></span>
+    <span class="stat" aria-label="Lives remaining">♥ <span class="value" id="lives-display">3</span></span>
     <span class="stat" id="difficulty-stat">🔥 <span class="value" id="difficulty-level">1</span></span>
   </div>
   <!-- Road end warning -->
@@ -678,6 +679,10 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createWorldBasis } from './modules/math/WorldBasis.js';
+
+// The highway uses +X as its forward route direction, +Z as right, and +Y as up.
+const WORLD_BASIS = createWorldBasis({ right: '+z', up: '+y', forward: '+x' });
 
 // ============================================================
 //  MOBILE DETECTION
@@ -746,6 +751,9 @@ const CONFIG = {
   playerBrake: 22,
   playerMaxSpeed: 120,
   minSafeSpeed: 10,    // mph threshold before underspeed penalty
+  startingLives: 3,
+  checkpointDistanceFromEnd: 200,
+  respawnClearance: 30,
   // Tunnel config (unused — open scenery)
 };
 
@@ -834,6 +842,9 @@ let score = 0;
 let gameTime = 0;        // elapsed game time (seconds)
 let timerStarted = false;
 let lastProgress = 0;
+let livesRemaining = CONFIG.startingLives;
+let checkpoint = null;
+let crashSequence = 0;
 let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDayPhase = Math.random(); // 0..1, randomized so each run starts at a different time of day
 let timeOfDayLabel = 'Day';
@@ -849,6 +860,25 @@ function formatTime(totalSeconds) {
   const mins = Math.floor(totalSec / 60);
   const secs = totalSec % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function updateLivesDisplay() {
+  document.getElementById('lives-display').textContent = livesRemaining;
+}
+
+function flashCheckpoint() {
+  const flash = document.getElementById('checkpoint-flash');
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 200);
+}
+
+function saveCheckpoint(showFeedback = true) {
+  if (!playerCar) return;
+  checkpoint = {
+    lane: playerCar.lane,
+    progress: playerCar.progress,
+  };
+  if (showFeedback) flashCheckpoint();
 }
 
 const RL = CONFIG.roadHalfWidth;
@@ -1691,15 +1721,15 @@ function createCarModel(color) {
 // ============================================================
 //  PLAYER CAR
 // ============================================================
-function createPlayerCar() {
-  const lane = laneDefs[0]; // start in left lane
+function createPlayerCar(spawn = { lane: laneDefs[0], progress: 50 }) {
+  const lane = spawn.lane;
   const { group: mesh, taillightMats, headlightMats, headlightGlowMats } = createCarModel(CONFIG.playerColor);
 
   const car = {
     id: carIdCounter++,
     mesh: mesh,
     lane: lane,
-    progress: 50,
+    progress: spawn.progress,
     speed: 0,
     targetSpeed: CONFIG.playerMaxSpeed,
     length: CONFIG.carLength,
@@ -1925,6 +1955,10 @@ function reverseDirection() {
     orientCarToLane(car);
   }
 
+  if (checkpoint) {
+    checkpoint.progress = checkpoint.lane.length - checkpoint.progress;
+  }
+
   // Update score tracking
   if (playerCar) lastProgress = playerCar.progress;
 }
@@ -2092,20 +2126,24 @@ function updatePlayer(dt) {
     playerCar.laneChangeTimer -= dt;
   } else {
     // Determine which lane is "left" relative to the car's facing direction
-    const leftVec = new THREE.Vector3().crossVectors(
-      playerCar.lane.dirVec, new THREE.Vector3(0, 1, 0)
-    ).multiplyScalar(-1).normalize();
+    const leftVec = WORLD_BASIS.sideVector(playerCar.lane.dirVec, -1).normalize();
     // Lane with higher Z component is the "leftwards" lane (from camera view)
     const leftIsHighZ = leftVec.z > 0;
     const leftLane = leftIsHighZ ? laneDefs[1] : laneDefs[0];
     const rightLane = leftIsHighZ ? laneDefs[0] : laneDefs[1];
 
     if (isLeft() && playerCar.lane !== leftLane) {
+      const laneIndex = playerCar.lane.cars.indexOf(playerCar);
+      if (laneIndex !== -1) playerCar.lane.cars.splice(laneIndex, 1);
       playerCar.lane = leftLane;
+      playerCar.lane.cars.push(playerCar);
       playerCar.laneChangeTimer = 0.3;
       laneChanged = true;
     } else if (isRight() && playerCar.lane !== rightLane) {
+      const laneIndex = playerCar.lane.cars.indexOf(playerCar);
+      if (laneIndex !== -1) playerCar.lane.cars.splice(laneIndex, 1);
       playerCar.lane = rightLane;
+      playerCar.lane.cars.push(playerCar);
       playerCar.laneChangeTimer = 0.3;
       laneChanged = true;
     }
@@ -2143,6 +2181,7 @@ function updatePlayer(dt) {
   playerCar.prevSpeed = playerCar.speed;
 
   // Update position
+  const previousProgress = playerCar.progress;
   playerCar.progress += playerCar.speed * dt;
   if (playerCar.progress >= playerCar.lane.length) {
     playerCar.progress -= playerCar.lane.length;
@@ -2158,15 +2197,16 @@ function updatePlayer(dt) {
   }
   lastProgress = playerCar.progress;
 
+  const checkpointProgress = playerCar.lane.length - CONFIG.checkpointDistanceFromEnd;
+  if (previousProgress < checkpointProgress && playerCar.progress >= checkpointProgress) {
+    saveCheckpoint();
+  }
+
   // Update mesh position
   const targetPos = getLanePosition(playerCar.lane, playerCar.progress);
   const dist = playerCar.mesh.position.distanceTo(targetPos);
   if (dist > 100) {
-    playerCar.mesh.position.copy(targetPos);  // instant snap on wrap
-    // Checkpoint flash
-    const flash = document.getElementById('checkpoint-flash');
-    flash.style.opacity = '1';
-    setTimeout(() => { flash.style.opacity = '0'; }, 200);
+    playerCar.mesh.position.copy(targetPos);  // instant snap on road wrap
   } else {
     playerCar.mesh.position.lerp(targetPos, 0.25);  // smooth lane changes
   }
@@ -2271,9 +2311,7 @@ function updatePlayer(dt) {
   document.getElementById('time-display').textContent = formatTime(gameTime);
   // Lane indicator — account for car direction
   if (playerCar) {
-    const leftVec = new THREE.Vector3().crossVectors(
-      playerCar.lane.dirVec, new THREE.Vector3(0, 1, 0)
-    ).multiplyScalar(-1);
+    const leftVec = WORLD_BASIS.sideVector(playerCar.lane.dirVec, -1);
     const leftLane = leftVec.z > 0 ? laneDefs[1] : laneDefs[0];
     const rightLane = leftVec.z > 0 ? laneDefs[0] : laneDefs[1];
     document.getElementById('lane-dot-0').classList.toggle('active', playerCar.lane === leftLane);
@@ -2281,11 +2319,83 @@ function updatePlayer(dt) {
   }
 }
 
+function disposeObject3D(object) {
+  const geometries = new Set();
+  const materials = new Set();
+  object.traverse(child => {
+    if (child.geometry) geometries.add(child.geometry);
+    const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    childMaterials.filter(Boolean).forEach(material => materials.add(material));
+  });
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
+}
+
+function removeFire() {
+  if (!fireGroup) return;
+  scene.remove(fireGroup);
+  disposeObject3D(fireGroup);
+  fireGroup = null;
+}
+
+function clearTrafficNearSpawn(spawn) {
+  for (const car of [...cars]) {
+    if (car.isPlayer || car.lane !== spawn.lane) continue;
+    let distance = Math.abs(car.progress - spawn.progress);
+    if (distance > spawn.lane.length * 0.5) distance = spawn.lane.length - distance;
+    if (distance < CONFIG.respawnClearance) {
+      removeCar(car);
+      disposeObject3D(car.mesh);
+    }
+  }
+}
+
+function snapCameraToPlayer() {
+  if (!playerCar) return;
+  const position = playerCar.mesh.position;
+  const direction = getLaneDirection(playerCar.lane, playerCar.progress);
+  if (viewMode === 'fpv') {
+    camera.position.copy(position.clone().add(direction.clone().multiplyScalar(-8)).add(new THREE.Vector3(0, 4, 0)));
+    camera.lookAt(position.clone().add(direction.clone().multiplyScalar(30)).add(new THREE.Vector3(0, 1.5, 0)));
+  } else {
+    camera.position.copy(position.clone().add(direction.clone().multiplyScalar(-chaseDistance)).add(new THREE.Vector3(0, chaseDistance * 0.7, 0)));
+    camera.lookAt(position);
+  }
+}
+
+function resumeFromCheckpoint() {
+  const spawn = checkpoint || { lane: laneDefs[0], progress: 50 };
+
+  if (playerCar) {
+    removeCar(playerCar);
+    disposeObject3D(playerCar.mesh);
+  }
+  removeFire();
+  clearTrafficNearSpawn(spawn);
+
+  playerCar = createPlayerCar(spawn);
+  lastProgress = playerCar.progress;
+  updateCarLightsForTimeOfDay();
+  gameOver = false;
+  controls.enabled = viewMode === 'top';
+  document.getElementById('road-warning').classList.remove('active');
+  document.getElementById('speed-lines').innerHTML = '';
+  document.getElementById('speed-lines').classList.remove('active');
+  updateEngineSound(0);
+  snapCameraToPlayer();
+}
+
 function triggerGameOver() {
+  if (gameOver) return;
   gameOver = true;
+  livesRemaining = Math.max(0, livesRemaining - 1);
+  updateLivesDisplay();
+  const hasLivesRemaining = livesRemaining > 0;
+  const currentCrash = ++crashSequence;
+
   // Crash sound + silence engine
   playCrashSound();
-  if (engineGain) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+  if (engineGain && audioCtx) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
 
   // Screen flash — red overlay
   const flash = document.createElement('div');
@@ -2329,15 +2439,22 @@ function triggerGameOver() {
   controls.enabled = false;
   gameOverAngle = 0;
 
-  // Show game over with a 3-second delay — enjoy the fire
+  // A remaining life resumes the same run at the last checkpoint; only the
+  // final life shows the full game-over screen.
   setTimeout(() => {
+    if (currentCrash !== crashSequence) return;
+    if (hasLivesRemaining) {
+      resumeFromCheckpoint();
+      return;
+    }
     document.getElementById('final-score').textContent = Math.round(score);
     document.getElementById('final-time').textContent = formatTime(gameTime);
     document.getElementById('game-over').classList.add('active');
-  }, 3000);
+  }, hasLivesRemaining ? 1200 : 3000);
 }
 
 function restartGame() {
+  crashSequence++;
   // Remove all cars
   for (let i = cars.length - 1; i >= 0; i--) {
     scene.remove(cars[i].mesh);
@@ -2346,12 +2463,7 @@ function restartGame() {
   cars.length = 0;
   carIdCounter = 0;
 
-  // Remove fire
-  if (fireGroup) {
-    scene.remove(fireGroup);
-    fireGroup.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
-    fireGroup = null;
-  }
+  removeFire();
 
   // Reset state
   gameOver = false;
@@ -2359,6 +2471,8 @@ function restartGame() {
   gameTime = 0;
   timerStarted = false;
   lastProgress = 0;
+  livesRemaining = CONFIG.startingLives;
+  checkpoint = null;
   spawnTimer = 0;
   timeOfDayPhase = Math.random();
   applyTimeOfDay(timeOfDayPhase);
@@ -2375,6 +2489,7 @@ function restartGame() {
   document.getElementById('overspeed-label').classList.remove('active');
   document.getElementById('score').textContent = '0';
   document.getElementById('time-display').textContent = formatTime(gameTime);
+  updateLivesDisplay();
   document.getElementById('final-time').textContent = formatTime(gameTime);
   document.getElementById('difficulty-level').textContent = '1';
   document.getElementById('difficulty-stat').classList.remove('difficulty-hot', 'difficulty-extreme');
@@ -2388,6 +2503,7 @@ function restartGame() {
   // Create player and initial traffic
   playerCar = createPlayerCar();
   lastProgress = playerCar.progress;
+  saveCheckpoint(false);
   spawnInitialCars(20);
 
   // Snap camera to player
@@ -2826,6 +2942,8 @@ function spawnInitialCars(count) {
 // ---- Start game ----
 playerCar = createPlayerCar();
 lastProgress = playerCar.progress;
+saveCheckpoint(false);
+updateLivesDisplay();
 spawnInitialCars(20);
 
 // Snap camera to player immediately

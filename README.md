@@ -20,7 +20,7 @@ A browser-based 3D driving game built with **Three.js**. Race along a bending mo
 - **Speed**: MPH gauge in the bottom-right corner.
 - **Difficulty**: The 🔥 indicator shows the current difficulty level (1–10). Traffic density, AI speed, and spawn rate increase over time.
 - **Overspeed**: Exceeding 70 MPH shows a warning, but your score remains distance-based.
-- **Crashes**: Hitting traffic ahead ends the game. AI cars that rear-end you are safely absorbed.
+- **Lives and checkpoints**: Start with 3 lives. Hitting traffic ahead costs one life and resumes the run at the last checkpoint gate; score, time, and difficulty continue. AI cars that rear-end you are safely absorbed.
 
 ### Mobile
 
