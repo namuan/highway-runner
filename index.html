@@ -297,6 +297,14 @@
     opacity: 0; transition: opacity 0.15s;
   }
 
+  /* --- Portal transition flash — covers the seam snap while the world recolours --- */
+  #portal-flash {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 7;
+    background: radial-gradient(ellipse at center, rgba(120,220,255,0.55) 0%, rgba(20,90,160,0.75) 100%);
+    opacity: 0;
+  }
+
   /* --- Lane indicator --- */
   #lane-indicator {
     position: fixed;
@@ -605,6 +613,8 @@
   <div id="speed-lines"></div>
   <!-- Checkpoint flash -->
   <div id="checkpoint-flash"></div>
+  <!-- Portal transition flash -->
+  <div id="portal-flash"></div>
 
   <!-- Lane indicator -->
   <div id="lane-indicator">
@@ -758,6 +768,67 @@ const CONFIG = {
 };
 
 // ============================================================
+//  BIOME THEMES — the road is a closed loop, so crossing a portal
+//  recolours the world to look like a different place. Each biome
+//  supplies terrain palettes plus an atmosphere tint that is blended
+//  on top of the existing day/night cycle.
+// ============================================================
+const BIOMES = [
+  {
+    id: 'verdant', label: 'Verdant',
+    skyTint: 0xffffff,
+    verge: 0x8B7355, grass: 0x5a8240,
+    plainsNear: 0x4a7a2e, plainsFar: 0x558a3a,
+    trunk: 0x8B5A2B, trunkLight: 0xA0806A,
+    pine: [0x2d5a1e, 0x3a7a25, 0x1f4f0f, 0x4a8c2a, 0x226618],
+    deciduous: [0x3d7a28, 0x5a9a3a, 0x4a8c32, 0x6aaa44, 0x358020],
+    mountainNear: 0x8c6e28, mountainFar: 0x3c3278, snow: 0xd0dde8,
+    mound: [0x5a8a3a, 0x4a7a2e, 0x6a9a44, 0x3d6b22, 0x558a3a],
+    bush: [0x3a6b20, 0x4a7a2e, 0x558a35, 0x2d5a1a, 0x609040],
+    flower: [0xff4488, 0xffcc44, 0xff8800, 0xee4499, 0xffff66, 0xcc44ff, 0xff6666],
+  },
+  {
+    id: 'autumn', label: 'Autumn',
+    skyTint: 0xffe6cc,
+    verge: 0x9a7a4a, grass: 0xa58a3a,
+    plainsNear: 0xa5842a, plainsFar: 0xb09140,
+    trunk: 0x6b4a22, trunkLight: 0x8a6a3a,
+    pine: [0x5a5a20, 0x6a6a2a, 0x4a4a18, 0x77772e, 0x55661c],
+    deciduous: [0xcc7733, 0xdd9944, 0xbb6622, 0xaa8833, 0xc88030],
+    mountainNear: 0xa07840, mountainFar: 0x7a6a78, snow: 0xe8e0d0,
+    mound: [0x9a7a30, 0xa88a3a, 0xbb8a3a, 0x8a6a24, 0xaa8844],
+    bush: [0x9a6a20, 0xaa7a2e, 0xb5802a, 0x8a5a1a, 0xc09a30],
+    flower: [0xff8844, 0xffcc66, 0xdd7733, 0xffaa44, 0xcc9955, 0xff7744],
+  },
+  {
+    id: 'desert', label: 'Desert Dusk',
+    skyTint: 0xffb877,
+    verge: 0xc8a05a, grass: 0xb0913a,
+    plainsNear: 0xc8a35a, plainsFar: 0xd0b070,
+    trunk: 0x7a5a2a, trunkLight: 0x9a7a3a,
+    pine: [0x8a7a30, 0x9a8a3a, 0x7a6a28, 0xa08a40, 0x88762e],
+    deciduous: [0x9a8a3a, 0xaa9944, 0x8a7a2e, 0xbbaa4e, 0x8a7a30],
+    mountainNear: 0xc07a4a, mountainFar: 0x8a6a88, snow: 0xd8b8a0,
+    mound: [0xc8a45a, 0xd0b060, 0xbaa04e, 0xc8a85a, 0xc09850],
+    bush: [0x9a8a3a, 0xaa9a44, 0xb0a04a, 0x8a7a30, 0xc0b060],
+    flower: [0xff7744, 0xffaa44, 0xffdd66, 0xff8844, 0xdd9955, 0xffaa33],
+  },
+  {
+    id: 'alpine', label: 'Alpine Night',
+    skyTint: 0xcce0ff,
+    verge: 0x9aa0a8, grass: 0xb8c0c8,
+    plainsNear: 0xbfc8cf, plainsFar: 0xd8e0e6,
+    trunk: 0x4a4238, trunkLight: 0x5a544a,
+    pine: [0x2a3a4a, 0x3a4a5a, 0x1f3040, 0x4a5a6a, 0x33506a],
+    deciduous: [0x5a6a7a, 0x6a7a8a, 0x4a5a6a, 0x7a8a9a, 0x55707a],
+    mountainNear: 0x9aa0b0, mountainFar: 0x6070a0, snow: 0xffffff,
+    mound: [0x9aa0a8, 0x8a9098, 0xb0b8c0, 0x7a8088, 0xaaa8b0],
+    bush: [0x8a9098, 0x9aa0a8, 0xb0b8c0, 0x7a8088, 0xa0a8b0],
+    flower: [0xccddff, 0xddccff, 0xaaccff, 0xbbddff, 0xccffdd, 0xffffff],
+  },
+];
+
+// ============================================================
 //  GLOBALS
 // ============================================================
 const scene = new THREE.Scene();
@@ -788,6 +859,11 @@ controls.update();
 // World group for tunnel/road geometry (shifted for infinite wrapping)
 const worldGroup = new THREE.Group();
 scene.add(worldGroup);
+
+// Themed scenery lives in its own group so passing through a portal can
+// recolour it without touching the persistent road, markings, gates, or portals.
+const sceneryGroup = new THREE.Group();
+worldGroup.add(sceneryGroup);
 
 // ============================================================
 //  OUTDOOR LIGHTING
@@ -851,6 +927,13 @@ let timeOfDayLabel = 'Day';
 let currentNightFactor = 0; // 0 = bright day, 1 = darkest night
 let chaseDistance = 3;
 let mobileOnboardingActive = false;
+// Biome state — which themed world we are in. Crossed round-robin through
+// the portals at each end of the looping road.
+let biomeIndex = 0;
+let currentBiome = BIOMES[0];
+const _biomeTint = new THREE.Color(0xffffff);
+let portalTransitionActive = false;
+let portalTransitionTime = 0;
 // Keyboard state
 const keys = { ' ': false, arrowup: false, arrowdown: false, arrowleft: false, arrowright: false };
 
@@ -877,6 +960,7 @@ function saveCheckpoint(showFeedback = true) {
   checkpoint = {
     lane: playerCar.lane,
     progress: playerCar.progress,
+    biomeIndex: biomeIndex,
   };
   if (showFeedback) flashCheckpoint();
 }
@@ -919,15 +1003,15 @@ function lerpColor(startHex, endHex, t) {
 
 function applyTimeOfDay(phase) {
   const { current, next, t } = getTimeOfDayBlend(phase);
-  const skyColor = lerpColor(current.sky, next.sky, t);
+  const skyColor = lerpColor(current.sky, next.sky, t).multiply(_biomeTint);
   scene.background.copy(skyColor);
   scene.fog.color.copy(skyColor);
   scene.fog.near = lerpNumber(current.fogNear, next.fogNear, t);
   scene.fog.far = lerpNumber(current.fogFar, next.fogFar, t);
 
-  ambient.color.copy(lerpColor(current.ambientColor, next.ambientColor, t));
+  ambient.color.copy(lerpColor(current.ambientColor, next.ambientColor, t).multiply(_biomeTint));
   ambient.intensity = lerpNumber(current.ambient, next.ambient, t);
-  sunLight.color.copy(lerpColor(current.sunColor, next.sunColor, t));
+  sunLight.color.copy(lerpColor(current.sunColor, next.sunColor, t).multiply(_biomeTint));
   sunLight.intensity = lerpNumber(current.sun, next.sun, t);
   skyFill.intensity = lerpNumber(current.fill, next.fill, t);
   renderer.toneMappingExposure = lerpNumber(current.exposure, next.exposure, t);
@@ -1287,6 +1371,62 @@ buildTunnelRoad();
 finalizeLanes();
 
 // ============================================================
+//  THEME REGISTRY — collects every themeable material and
+//  instanced mesh while the scenery is built, so a biome change
+//  recolours the world in place instead of rebuilding geometry.
+// ============================================================
+const themeRegistry = {
+  solids: [],   // { mat, role } — verge, grass, plains, trunks
+  pine: [],     // pine cone materials
+  deciduous: [],// deciduous canopy materials
+  mountains: [],// { mat, depth }
+  snow: [],     // mountain snow-cap materials
+  mounds: [],   // mound materials
+  bush: null,   // { mesh, palette, count }
+  flower: null, // { mesh, palette, count }
+};
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function setInstancedPalette(inst, palette, count) {
+  if (!inst || !inst.instanceColor) return;
+  const c = new THREE.Color();
+  for (let i = 0; i < count; i++) {
+    inst.setColorAt(i, c.setHex(pick(palette)));
+  }
+  inst.instanceColor.needsUpdate = true;
+}
+
+function updateBiomeTint() {
+  _biomeTint.setHex(currentBiome.skyTint);
+}
+
+// Recolour every registered themeable material/instance to the given biome.
+function applySceneryTheme(biome) {
+  for (const { mat, role } of themeRegistry.solids) {
+    mat.color.setHex(biome[role]);
+  }
+  for (const mat of themeRegistry.pine) mat.color.setHex(pick(biome.pine));
+  for (const mat of themeRegistry.deciduous) mat.color.setHex(pick(biome.deciduous));
+  for (const { mat, depth } of themeRegistry.mountains) {
+    mat.color.copy(new THREE.Color(biome.mountainNear).lerp(new THREE.Color(biome.mountainFar), depth));
+  }
+  for (const mat of themeRegistry.snow) mat.color.setHex(biome.snow);
+  for (const mat of themeRegistry.mounds) mat.color.setHex(pick(biome.mound));
+  if (themeRegistry.bush) setInstancedPalette(themeRegistry.bush.mesh, biome.bush, themeRegistry.bush.count);
+  if (themeRegistry.flower) setInstancedPalette(themeRegistry.flower.mesh, biome.flower, themeRegistry.flower.count);
+  currentBiome = biome;
+  updateBiomeTint();
+}
+
+function advanceBiome() {
+  biomeIndex = (biomeIndex + 1) % BIOMES.length;
+  applySceneryTheme(BIOMES[biomeIndex]);
+}
+
+// ============================================================
 //  TUNNEL ENVIRONMENT — full-length enclosed tunnel
 // ============================================================
 function buildScenicRoute() {
@@ -1296,18 +1436,19 @@ function buildScenicRoute() {
   // ---- Road verge — dirt shoulder next to road ----
   const vergeMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.95 });
   const grassVergeMat = new THREE.MeshStandardMaterial({ color: 0x5a8240, roughness: 0.85 });
+  themeRegistry.solids.push({ mat: vergeMat, role: 'verge' }, { mat: grassVergeMat, role: 'grass' });
   for (const side of [-1, 1]) {
     // Dirt verge — curved strip matching the road bend
     const verge = new THREE.Mesh(createCurvedStripGeometry(length, 1.5, side * (halfW + 0.75)), vergeMat);
     verge.position.y = -0.06;
     verge.receiveShadow = true;
-    worldGroup.add(verge);
+    sceneryGroup.add(verge);
 
     // Grass strip — curved strip matching the road bend
     const grass = new THREE.Mesh(createCurvedStripGeometry(length, 4.5, side * (halfW + 2.75)), grassVergeMat);
     grass.position.y = -0.04;
     grass.receiveShadow = true;
-    worldGroup.add(grass);
+    sceneryGroup.add(grass);
   }
 
   // ---- Guardrails — InstancedMesh for posts + rails ----
@@ -1350,6 +1491,7 @@ function buildScenicRoute() {
   // ---- Trees — two types: conical pines + round-canopy deciduous ----
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.8 });
   const trunkMatLight = new THREE.MeshStandardMaterial({ color: 0xA0806A, roughness: 0.7 });
+  themeRegistry.solids.push({ mat: trunkMat, role: 'trunk' }, { mat: trunkMatLight, role: 'trunkLight' });
   const pineColors = [0x2d5a1e, 0x3a7a25, 0x1f4f0f, 0x4a8c2a, 0x226618];
   const deciduousColors = [0x3d7a28, 0x5a9a3a, 0x4a8c32, 0x6aaa44, 0x358020];
   const autumnColors = [0xcc7733, 0xdd9944, 0xbb6622, 0xaa8833, 0xc88030];
@@ -1374,7 +1516,7 @@ function buildScenicRoute() {
         );
         trunk.position.set(treeX, treeH * 0.27, z);
         trunk.castShadow = true;
-        worldGroup.add(trunk);
+        sceneryGroup.add(trunk);
 
         // Round canopy (2 overlapping spheres)
         const canopyColors = isAutumn ? autumnColors : deciduousColors;
@@ -1386,13 +1528,14 @@ function buildScenicRoute() {
               roughness: 0.8,
             })
           );
+          themeRegistry.deciduous.push(canopy.material);
           canopy.position.set(
             treeX + (Math.random() - 0.5) * 0.3,
             treeH * 0.6 + s * treeH * 0.12,
             z + (Math.random() - 0.5) * 0.3
           );
           canopy.castShadow = true;
-          worldGroup.add(canopy);
+          sceneryGroup.add(canopy);
         }
       } else {
         // Conical pine — existing style
@@ -1402,7 +1545,7 @@ function buildScenicRoute() {
         );
         trunk.position.set(treeX, treeH * 0.25, z);
         trunk.castShadow = true;
-        worldGroup.add(trunk);
+        sceneryGroup.add(trunk);
 
         for (let layer = 0; layer < 3; layer++) {
           const coneH = treeH * 0.35;
@@ -1414,9 +1557,10 @@ function buildScenicRoute() {
               roughness: 0.7,
             })
           );
+          themeRegistry.pine.push(cone.material);
           cone.position.set(treeX, treeH * 0.45 + layer * coneH * 0.55, z);
           cone.castShadow = true;
-          worldGroup.add(cone);
+          sceneryGroup.add(cone);
         }
       }
     }
@@ -1435,15 +1579,17 @@ function buildScenicRoute() {
     const b = Math.floor(40 + depth * 80);
     const mtColor = new THREE.Color(`rgb(${r},${g},${b})`);
     const mt = new THREE.MeshStandardMaterial({ color: mtColor, roughness: 0.85 });
+    themeRegistry.mountains.push({ mat: mt, depth });
     const mountain = new THREE.Mesh(new THREE.ConeGeometry(mr, mh, 8), mt);
     mountain.position.set(mx, -mh * 0.3, mz);
-    worldGroup.add(mountain);
+    sceneryGroup.add(mountain);
 
     if (mh > 35) {
       const snowMat = new THREE.MeshStandardMaterial({ color: 0xd0dde8, roughness: 0.6 });
+      themeRegistry.snow.push(snowMat);
       const snow = new THREE.Mesh(new THREE.ConeGeometry(mr * 0.3, mh * 0.22, 8), snowMat);
       snow.position.set(mx, mh * 0.35, mz);
-      worldGroup.add(snow);
+      sceneryGroup.add(snow);
     }
   }
 
@@ -1483,7 +1629,8 @@ function buildScenicRoute() {
     bushInstanced.setMatrixAt(bushIdx, dummy.matrix);
   }
   bushInstanced.instanceColor.needsUpdate = true;
-  worldGroup.add(bushInstanced);
+  themeRegistry.bush = { mesh: bushInstanced, palette: bushColorsHex, count: bushCount };
+  sceneryGroup.add(bushInstanced);
 
   // ---- Wildflowers near road verge (InstancedMesh for performance) ----
   const flowerCount = isMobile ? 100 : 300;
@@ -1503,25 +1650,27 @@ function buildScenicRoute() {
     flowerInstanced.setColorAt(i, new THREE.Color(flowerColorsHex[Math.floor(Math.random() * flowerColorsHex.length)]));
   }
   flowerInstanced.instanceColor.needsUpdate = true;
-  worldGroup.add(flowerInstanced);
+  themeRegistry.flower = { mesh: flowerInstanced, palette: flowerColorsHex, count: flowerCount };
+  sceneryGroup.add(flowerInstanced);
 
   // ---- Plains / ground planes on both sides ----
   const plainMat = new THREE.MeshStandardMaterial({ color: 0x4a7a2e, roughness: 0.9 });
   const fieldMat = new THREE.MeshStandardMaterial({ color: 0x558a3a, roughness: 0.9 });
+  themeRegistry.solids.push({ mat: plainMat, role: 'plainsNear' }, { mat: fieldMat, role: 'plainsFar' });
   for (const side of [-1, 1]) {
     // Near plain (darker)
     const near = new THREE.Mesh(new THREE.PlaneGeometry(length, 30), plainMat);
     near.rotation.x = -Math.PI / 2;
     near.position.set(0, -0.1, side * (halfW + 4 + 15));
     near.receiveShadow = true;
-    worldGroup.add(near);
+    sceneryGroup.add(near);
 
     // Far plain (lighter — gives depth)
     const far = new THREE.Mesh(new THREE.PlaneGeometry(length, 30), fieldMat);
     far.rotation.x = -Math.PI / 2;
     far.position.set(0, -0.1, side * (halfW + 4 + 45));
     far.receiveShadow = true;
-    worldGroup.add(far);
+    sceneryGroup.add(far);
   }
 
   // ---- Mounds / gentle hills ----
@@ -1532,23 +1681,28 @@ function buildScenicRoute() {
     const mz = getRoadCurveZ(mx) + mside * (halfW + 5 + Math.random() * 55);
     const mh = 1 + Math.random() * 4;
     const mr = mh * 1.5 + Math.random() * 3;
+    const moundMat = new THREE.MeshStandardMaterial({
+      color: moundColors[Math.floor(Math.random() * moundColors.length)],
+      roughness: 0.8,
+    });
+    themeRegistry.mounds.push(moundMat);
     const mound = new THREE.Mesh(
       new THREE.SphereGeometry(mr, 12, 8, 0, Math.PI * 2, 0, Math.PI / 3),
-      new THREE.MeshStandardMaterial({
-        color: moundColors[Math.floor(Math.random() * moundColors.length)],
-        roughness: 0.8,
-      })
+      moundMat
     );
     mound.position.set(mx, -mh * 0.15, mz);
     mound.scale.y = 0.4;
     mound.receiveShadow = true;
-    worldGroup.add(mound);
+    sceneryGroup.add(mound);
   }
 
   console.log('🌲 Scenic route built: length=' + length + 'm, trees, guardrails, mountains, plains, mounds');
 }
 
 buildScenicRoute();
+
+// Apply the starting biome palette to the freshly-built scenery.
+applySceneryTheme(BIOMES[biomeIndex]);
 
 // ---- Checkpoint gates at wrap points ----
 const gateMat = new THREE.MeshStandardMaterial({
@@ -1580,6 +1734,85 @@ laneDefs.forEach(lane => {
   top.rotation.y = gateYaw;
   worldGroup.add(top);
 });
+
+// ============================================================
+//  PORTAL GATES — the road is a closed loop, so each physical end
+//  gets a glowing portal. Driving through one wraps the player and
+//  recolours the world into the next biome, reading as "somewhere new".
+//  Both ends get a gate because reverseDirection() flips which end is
+//  the active seam.
+// ============================================================
+const PORTAL_COLOR = 0x33ccff;
+const PORTAL_TRANSITION_DURATION = 0.7;
+const portals = [];
+const portalFlashEl = document.getElementById('portal-flash');
+
+function buildPortal(x) {
+  const z = getRoadCurveZ(x);
+  // yaw follows the road tangent but with the opposite sign so the gate
+  // stands perpendicular to the direction of travel.
+  const yaw = Math.atan(-getRoadCurveSlope(x));
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = yaw;
+
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: PORTAL_COLOR, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(5.5, 0.28, 12, 40), ringMat);
+  ring.rotation.y = Math.PI / 2; // stand the ring across the road (hole axis along X)
+  ring.position.y = 5.5;
+  g.add(ring);
+
+  const discMat = new THREE.MeshBasicMaterial({
+    color: 0x66ffff, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false,
+  });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(5.2, 40), discMat);
+  disc.rotation.y = Math.PI / 2;
+  disc.position.y = 5.5;
+  g.add(disc);
+
+  worldGroup.add(g);
+  portals.push({ group: g, ringMat, discMat, ring, disc });
+}
+
+// One portal just inside each physical end of the road.
+const portalOffset = 8;
+buildPortal(-CONFIG.roadLength / 2 + portalOffset);
+buildPortal(CONFIG.roadLength / 2 - portalOffset);
+
+function updatePortals(time) {
+  const pulse = 0.6 + 0.4 * Math.sin(time * 0.004);
+  for (const p of portals) {
+    p.ringMat.opacity = 0.7 + 0.25 * pulse;
+    p.discMat.opacity = 0.10 + 0.12 * pulse;
+    p.ring.rotation.z = time * 0.0006; // slow swirl so it reads as an active portal
+  }
+}
+
+// The player crossed the wrap seam: advance the biome and start the
+// portal transition so the scenery change reads as "teleported".
+function onPlayerWrapped() {
+  portalTransitionActive = true;
+  portalTransitionTime = 0;
+  if (portalFlashEl) portalFlashEl.style.opacity = '1';
+  advanceBiome();
+}
+
+function updatePortalTransition(dt) {
+  if (!portalTransitionActive) return;
+  portalTransitionTime += dt;
+  const t = portalTransitionTime / PORTAL_TRANSITION_DURATION;
+  if (t >= 1) {
+    portalTransitionActive = false;
+    if (portalFlashEl) portalFlashEl.style.opacity = '0';
+    return;
+  }
+  if (portalFlashEl) {
+    // Fully cover the seam snap, then fade out to reveal the new world.
+    portalFlashEl.style.opacity = (1 - t).toFixed(3);
+  }
+}
 
 // ============================================================
 //  CAR MODEL
@@ -2185,6 +2418,8 @@ function updatePlayer(dt) {
   playerCar.progress += playerCar.speed * dt;
   if (playerCar.progress >= playerCar.lane.length) {
     playerCar.progress -= playerCar.lane.length;
+    // The player drove through a portal — recolour the world into the next biome.
+    onPlayerWrapped();
   }
 
   // Score = distance traveled
@@ -2364,7 +2599,18 @@ function snapCameraToPlayer() {
 }
 
 function resumeFromCheckpoint() {
-  const spawn = checkpoint || { lane: laneDefs[0], progress: 50 };
+  const spawn = checkpoint || { lane: laneDefs[0], progress: 50, biomeIndex: 0 };
+
+  // A checkpoint saved before a portal must restore the world the player
+  // was in when it was saved, not the biome they may have entered since.
+  if (Number.isInteger(spawn.biomeIndex) && spawn.biomeIndex !== biomeIndex) {
+    biomeIndex = spawn.biomeIndex;
+    applySceneryTheme(BIOMES[biomeIndex]);
+  }
+
+  portalTransitionActive = false;
+  portalTransitionTime = 0;
+  if (portalFlashEl) portalFlashEl.style.opacity = '0';
 
   if (playerCar) {
     removeCar(playerCar);
@@ -2476,6 +2722,14 @@ function restartGame() {
   spawnTimer = 0;
   timeOfDayPhase = Math.random();
   applyTimeOfDay(timeOfDayPhase);
+
+  // Deterministic biome + portal reset
+  portalTransitionActive = false;
+  portalTransitionTime = 0;
+  if (portalFlashEl) portalFlashEl.style.opacity = '0';
+  biomeIndex = 0;
+  applySceneryTheme(BIOMES[biomeIndex]);
+  updateCarLightsForTimeOfDay();
 
   // Reset view — keep FPV mode active
   if (viewMode === 'fpv') {
@@ -2817,6 +3071,8 @@ function animate(time) {
   lastTime = time;
   if (!gameOver && timerStarted) gameTime += dt;
   updateTimeOfDay(dt);
+  updatePortals(time);
+  updatePortalTransition(dt);
 
   // Spawn AI cars — difficulty scales with gameTime
   const difficulty = getDifficultyState();
