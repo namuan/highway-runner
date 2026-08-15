@@ -766,6 +766,9 @@ const CONFIG = {
   respawnClearance: 30,
   streetlightSpacing: isMobile ? 64 : 48,
   streetlightSetback: 1.4,
+  streetlightLightRange: 42,
+  streetlightLightIntensity: 12,
+  streetlightLightDecay: 1,
   // Tunnel config (unused — open scenery)
 };
 
@@ -1099,7 +1102,7 @@ function updateStreetlightsForTimeOfDay() {
       continue;
     }
     light.position.copy(lamp.position);
-    light.intensity = 55 * nightLighting;
+    light.intensity = CONFIG.streetlightLightIntensity * nightLighting;
     light.visible = true;
   }
 }
@@ -1480,7 +1483,12 @@ function buildStreetlights() {
 
   const activeLightCount = isMobile ? 6 : 10;
   for (let i = 0; i < activeLightCount; i++) {
-    const roadLight = new THREE.PointLight(0xffc56e, 0, 24, 2);
+    const roadLight = new THREE.PointLight(
+      0xffc56e,
+      0,
+      CONFIG.streetlightLightRange,
+      CONFIG.streetlightLightDecay
+    );
     roadLight.castShadow = false;
     roadLight.visible = false;
     scene.add(roadLight);
