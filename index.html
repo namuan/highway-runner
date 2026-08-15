@@ -764,6 +764,8 @@ const CONFIG = {
   startingLives: 3,
   checkpointDistanceFromEnd: 200,
   respawnClearance: 30,
+  streetlightSpacing: isMobile ? 64 : 48,
+  streetlightSetback: 1.4,
   // Tunnel config (unused — open scenery)
 };
 
@@ -946,6 +948,9 @@ let viewMode = 'fpv'; // 'top' or 'fpv'
 let timeOfDayPhase = Math.random(); // 0..1, randomized so each run starts at a different time of day
 let timeOfDayLabel = 'Day';
 let currentNightFactor = 0; // 0 = bright day, 1 = darkest night
+let streetlightBulbMat = null;
+const streetlightPositions = [];
+const streetlightRoadLights = [];
 let chaseDistance = 3;
 let mobileOnboardingActive = false;
 // Biome state — which themed world we are in. Crossed round-robin through
@@ -1041,6 +1046,7 @@ function applyTimeOfDay(phase) {
   sunLight.position.set(Math.cos(sunAngle) * 100, Math.sin(sunAngle) * 75 + 20, 40);
   currentNightFactor = lerpNumber(current.carLights, next.carLights, t);
   updateCarLightsForTimeOfDay();
+  updateStreetlightsForTimeOfDay();
   timeOfDayLabel = t < 0.5 ? current.label : next.label;
   document.getElementById('btn-time').textContent = `⏭ ${timeOfDayLabel}`;
 }
@@ -1069,6 +1075,32 @@ function updateCarLightsForTimeOfDay() {
         mat.emissiveIntensity = tailBaseIntensity + brakeBoost;
       }
     }
+  }
+}
+
+function updateStreetlightsForTimeOfDay() {
+  if (!streetlightBulbMat) return;
+  // Lamps are nearly invisible in daylight and become a warm, restrained guide at night.
+  streetlightBulbMat.emissiveIntensity = lerpNumber(0.02, 2.1, currentNightFactor);
+
+  if (!playerCar || streetlightRoadLights.length === 0) return;
+  const nightLighting = Math.max(0, (currentNightFactor - 0.18) / 0.82);
+  const nearestLamps = streetlightPositions
+    .map(position => ({ position, distance: position.distanceToSquared(playerCar.mesh.position) }))
+    .sort((a, b) => a.distance - b.distance);
+
+  // Only the lamps surrounding the driver use real point lights. The rest stay emissive,
+  // which keeps the road illuminated without asking the GPU to shade every lamp at once.
+  for (let i = 0; i < streetlightRoadLights.length; i++) {
+    const light = streetlightRoadLights[i];
+    const lamp = nearestLamps[i];
+    if (!lamp || nightLighting === 0) {
+      light.visible = false;
+      continue;
+    }
+    light.position.copy(lamp.position);
+    light.intensity = 55 * nightLighting;
+    light.visible = true;
   }
 }
 
@@ -1388,7 +1420,77 @@ function finalizeLanes() {
   }
 }
 
+function buildStreetlights() {
+  const poleHeight = 5.4;
+  const spacing = CONFIG.streetlightSpacing;
+  const countPerSide = Math.floor(CONFIG.roadLength / spacing);
+  const total = countPerSide * 2;
+  const poleGeo = new THREE.CylinderGeometry(0.07, 0.10, poleHeight, 8);
+  const armGeo = new THREE.BoxGeometry(0.08, 0.08, 0.9);
+  const shadeGeo = new THREE.CylinderGeometry(0.28, 0.20, 0.18, 8);
+  const bulbGeo = new THREE.SphereGeometry(0.12, 8, 6);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x303943, roughness: 0.6, metalness: 0.65 });
+  const shadeMat = new THREE.MeshStandardMaterial({ color: 0x1d252d, roughness: 0.48, metalness: 0.72 });
+  streetlightBulbMat = new THREE.MeshStandardMaterial({
+    color: 0xffd58a,
+    emissive: 0xffc76b,
+    emissiveIntensity: 0.02,
+    roughness: 0.25,
+    toneMapped: false,
+  });
+
+  const poles = new THREE.InstancedMesh(poleGeo, poleMat, total);
+  const arms = new THREE.InstancedMesh(armGeo, poleMat, total);
+  const shades = new THREE.InstancedMesh(shadeGeo, shadeMat, total);
+  const bulbs = new THREE.InstancedMesh(bulbGeo, streetlightBulbMat, total);
+  const dummy = new THREE.Object3D();
+  let index = 0;
+
+  // Paired lamps every 48 m on desktop (64 m on mobile) keep the road continuously readable,
+  // without turning it into an over-lit city boulevard.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < countPerSide; i++) {
+      const x = -CONFIG.roadLength / 2 + spacing * (i + 0.5);
+      const baseZ = getRoadCurveZ(x) + side * (CONFIG.roadHalfWidth + CONFIG.streetlightSetback);
+
+      dummy.position.set(x, poleHeight / 2, baseZ);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      poles.setMatrixAt(index, dummy.matrix);
+
+      dummy.position.set(x, poleHeight - 0.12, baseZ - side * 0.45);
+      dummy.updateMatrix();
+      arms.setMatrixAt(index, dummy.matrix);
+
+      dummy.position.set(x, poleHeight - 0.16, baseZ - side * 0.87);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      shades.setMatrixAt(index, dummy.matrix);
+
+      dummy.position.set(x, poleHeight - 0.34, baseZ - side * 0.87);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      bulbs.setMatrixAt(index, dummy.matrix);
+      streetlightPositions.push(new THREE.Vector3(x, poleHeight - 0.34, baseZ - side * 0.87));
+      index++;
+    }
+  }
+
+  worldGroup.add(poles, arms, shades, bulbs);
+
+  const activeLightCount = isMobile ? 6 : 10;
+  for (let i = 0; i < activeLightCount; i++) {
+    const roadLight = new THREE.PointLight(0xffc56e, 0, 24, 2);
+    roadLight.castShadow = false;
+    roadLight.visible = false;
+    scene.add(roadLight);
+    streetlightRoadLights.push(roadLight);
+  }
+  updateStreetlightsForTimeOfDay();
+}
+
 buildTunnelRoad();
+buildStreetlights();
 finalizeLanes();
 
 // ============================================================
