@@ -767,6 +767,27 @@ const CONFIG = {
   // Tunnel config (unused — open scenery)
 };
 
+// Traffic mixes six vehicle silhouettes. Weight controls how often each one appears.
+const VEHICLE_TYPES = {
+  compact: { label: 'Compact', length: 3.25, width: 1.55, bodyHeight: 0.46, cabinHeight: 0.30, cabinLength: 0.55, cabinZ: -0.03, speedMultiplier: 1.10, weight: 25 },
+  sedan:   { label: 'Sedan',   length: 4.00, width: 1.80, bodyHeight: 0.55, cabinHeight: 0.35, cabinLength: 0.58, cabinZ: -0.08, speedMultiplier: 1.00, weight: 36 },
+  suv:     { label: 'SUV',     length: 4.45, width: 2.05, bodyHeight: 0.70, cabinHeight: 0.52, cabinLength: 0.60, cabinZ: -0.06, speedMultiplier: 0.92, weight: 15 },
+  sports:  { label: 'Sports',  length: 3.90, width: 1.85, bodyHeight: 0.38, cabinHeight: 0.23, cabinLength: 0.52, cabinZ: -0.04, speedMultiplier: 1.30, weight: 10 },
+  van:     { label: 'Van',     length: 4.80, width: 1.92, bodyHeight: 0.65, cabinHeight: 0.78, cabinLength: 0.78, cabinZ: 0.00,  speedMultiplier: 0.85, weight: 9 },
+  truck:   { label: 'Truck',   length: 7.20, width: 2.20, bodyHeight: 0.74, cabinHeight: 0.82, cabinLength: 0.34, cabinZ: 0.22,  speedMultiplier: 0.72, weight: 5 },
+};
+
+function pickVehicleType() {
+  const types = Object.entries(VEHICLE_TYPES);
+  const totalWeight = types.reduce((total, [, type]) => total + type.weight, 0);
+  let choice = Math.random() * totalWeight;
+  for (const [id, type] of types) {
+    choice -= type.weight;
+    if (choice <= 0) return { id, ...type };
+  }
+  return { id: 'sedan', ...VEHICLE_TYPES.sedan };
+}
+
 // ============================================================
 //  BIOME THEMES — the road is a closed loop, so crossing a portal
 //  recolours the world to look like a different place. Each biome
@@ -1136,7 +1157,7 @@ function hasLaneChangeSpace(car, targetLane, clearanceMultiplier = 3.5) {
     if (other === car || other.lane !== targetLane) continue;
     let dist = Math.abs(other.progress - car.progress);
     if (dist > targetLane.length * 0.5) dist = targetLane.length - dist;
-    if (dist < car.length * clearanceMultiplier) return false;
+    if (dist < Math.max(car.length, other.length) * clearanceMultiplier) return false;
   }
   return true;
 }
@@ -1817,15 +1838,17 @@ function updatePortalTransition(dt) {
 // ============================================================
 //  CAR MODEL
 // ============================================================
-function createCarModel(color) {
+function createCarModel(color, type = VEHICLE_TYPES.sedan) {
   const group = new THREE.Group();
   const taillightMats = [];
   const turnSignalMats = [];
   const headlightMats = [];
   const headlightGlowMats = [];
+  const { length, width, bodyHeight, cabinHeight, cabinLength, cabinZ } = type;
+  const wheelRadius = Math.min(0.34, width * 0.15);
 
   // Body
-  const bodyGeo = new THREE.BoxGeometry(CONFIG.carWidth, CONFIG.carBodyHeight, CONFIG.carLength);
+  const bodyGeo = new THREE.BoxGeometry(width, bodyHeight, length);
   const bodyMat = new THREE.MeshStandardMaterial({
     color: color,
     roughness: 0.3,
@@ -1834,22 +1857,22 @@ function createCarModel(color) {
     emissiveIntensity: 0.15,
   });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = CONFIG.carBodyHeight / 2 + 0.1;
+  body.position.y = bodyHeight / 2 + 0.1;
   body.castShadow = true;
   body.receiveShadow = true;
   group.add(body);
 
   // Cabin
-  const cabinW = CONFIG.carWidth * 0.72;
-  const cabinL = CONFIG.carLength * 0.58;
-  const cabinH = CONFIG.carCabinHeight;
+  const cabinW = width * (type.id === 'truck' ? 0.76 : 0.72);
+  const cabinL = length * cabinLength;
+  const cabinH = cabinHeight;
   const cabMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(color).multiplyScalar(0.7),
     roughness: 0.2,
     metalness: 0.1,
   });
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(cabinW, cabinH, cabinL), cabMat);
-  cabin.position.set(0, CONFIG.carBodyHeight + cabinH / 2 + 0.05, -CONFIG.carLength * 0.08);
+  cabin.position.set(0, bodyHeight + cabinH / 2 + 0.05, length * cabinZ);
   cabin.castShadow = true;
   group.add(cabin);
 
@@ -1863,22 +1886,22 @@ function createCarModel(color) {
   });
   const wsGeo = new THREE.PlaneGeometry(cabinW * 0.85, cabinH * 0.85);
   const wsFront = new THREE.Mesh(wsGeo, wsMat);
-  wsFront.position.set(0, CONFIG.carBodyHeight + cabinH / 2 + 0.05, -CONFIG.carLength * 0.08 + cabinL / 2 + 0.01);
+  wsFront.position.set(0, bodyHeight + cabinH / 2 + 0.05, length * cabinZ + cabinL / 2 + 0.01);
   group.add(wsFront);
 
   const wsRear = new THREE.Mesh(wsGeo.clone(), wsMat);
-  wsRear.position.set(0, CONFIG.carBodyHeight + cabinH / 2 + 0.05, -CONFIG.carLength * 0.08 - cabinL / 2 - 0.01);
+  wsRear.position.set(0, bodyHeight + cabinH / 2 + 0.05, length * cabinZ - cabinL / 2 - 0.01);
   wsRear.rotation.y = Math.PI;
   group.add(wsRear);
 
   // Wheels
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
-  const wheelGeo = new THREE.CylinderGeometry(CONFIG.wheelRadius, CONFIG.wheelRadius, CONFIG.wheelWidth, 8);
+  const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, CONFIG.wheelWidth, 8);
   const wheelPositions = [
-    [-CONFIG.carWidth / 2 - 0.05, CONFIG.wheelRadius + 0.05, -CONFIG.carLength * 0.3],
-    [CONFIG.carWidth / 2 + 0.05, CONFIG.wheelRadius + 0.05, -CONFIG.carLength * 0.3],
-    [-CONFIG.carWidth / 2 - 0.05, CONFIG.wheelRadius + 0.05, CONFIG.carLength * 0.3],
-    [CONFIG.carWidth / 2 + 0.05, CONFIG.wheelRadius + 0.05, CONFIG.carLength * 0.3],
+    [-width / 2 - 0.05, wheelRadius + 0.05, -length * 0.3],
+    [width / 2 + 0.05, wheelRadius + 0.05, -length * 0.3],
+    [-width / 2 - 0.05, wheelRadius + 0.05, length * 0.3],
+    [width / 2 + 0.05, wheelRadius + 0.05, length * 0.3],
   ];
   for (const wp of wheelPositions) {
     const wheel = new THREE.Mesh(wheelGeo, wheelMat);
@@ -1886,6 +1909,32 @@ function createCarModel(color) {
     wheel.rotation.x = Math.PI / 2;
     wheel.castShadow = true;
     group.add(wheel);
+  }
+
+  // Signature details make each traffic class readable at a glance.
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x20242a, roughness: 0.55, metalness: 0.35 });
+  if (type.id === 'suv') {
+    // Roof rails distinguish the taller SUV silhouette.
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, length * 0.48), trimMat);
+      rail.position.set(side * cabinW * 0.38, bodyHeight + cabinH + 0.11, length * cabinZ);
+      group.add(rail);
+    }
+  } else if (type.id === 'sports') {
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.07, 0.14), trimMat);
+    spoiler.position.set(0, bodyHeight + 0.27, -length * 0.38);
+    group.add(spoiler);
+  } else if (type.id === 'van') {
+    const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(width + 0.02, cabinH * 0.36, length * 0.34), new THREE.MeshStandardMaterial({ color: 0x5b87a8, roughness: 0.25, metalness: 0.05 }));
+    sidePanel.position.set(0, bodyHeight + cabinH * 0.62, -length * 0.13);
+    group.add(sidePanel);
+  } else if (type.id === 'truck') {
+    const cargoMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).offsetHSL(0, -0.08, 0.13), roughness: 0.65, metalness: 0.18 });
+    const cargo = new THREE.Mesh(new THREE.BoxGeometry(width * 0.94, 1.18, length * 0.50), cargoMat);
+    cargo.position.set(0, bodyHeight + 0.59, -length * 0.19);
+    cargo.castShadow = true;
+    cargo.receiveShadow = true;
+    group.add(cargo);
   }
 
   // Headlights with stronger glow for tunnel
@@ -1897,7 +1946,7 @@ function createCarModel(color) {
   const hlGeo = new THREE.BoxGeometry(0.15, 0.1, 0.05);
   for (const side of [-1, 1]) {
     const hl = new THREE.Mesh(hlGeo, hlMat);
-    hl.position.set(side * CONFIG.carWidth * 0.35, CONFIG.carBodyHeight * 0.6, CONFIG.carLength / 2 + 0.03);
+    hl.position.set(side * width * 0.35, bodyHeight * 0.6, length / 2 + 0.03);
     group.add(hl);
     headlightMats.push(hlMat);
   }
@@ -1913,7 +1962,7 @@ function createCarModel(color) {
   });
   for (const side of [-0.35, 0.35]) {
     const glow = new THREE.Mesh(glowGeo, glowMat);
-    glow.position.set(side * CONFIG.carWidth, CONFIG.carBodyHeight * 0.35, CONFIG.carLength / 2 + 0.65);
+    glow.position.set(side * width, bodyHeight * 0.35, length / 2 + 0.65);
     group.add(glow);
     headlightGlowMats.push(glowMat);
   }
@@ -1927,7 +1976,7 @@ function createCarModel(color) {
   const tlGeo = new THREE.BoxGeometry(0.22, 0.12, 0.06);
   for (const side of [-1, 1]) {
     const tl = new THREE.Mesh(tlGeo, tlMat);
-    tl.position.set(side * CONFIG.carWidth * 0.35, CONFIG.carBodyHeight * 0.6, -CONFIG.carLength / 2 - 0.03);
+    tl.position.set(side * width * 0.35, bodyHeight * 0.6, -length / 2 - 0.03);
     group.add(tl);
     taillightMats.push(tlMat);
   }
@@ -1939,11 +1988,11 @@ function createCarModel(color) {
       color: 0xffaa00, emissive: 0xffaa00, emissiveIntensity: 0.0
     });
     const tsFront = new THREE.Mesh(tsGeo, tsMat);
-    tsFront.position.set(side * CONFIG.carWidth * 0.48, CONFIG.carBodyHeight * 0.6, CONFIG.carLength / 2 + 0.02);
+    tsFront.position.set(side * width * 0.48, bodyHeight * 0.6, length / 2 + 0.02);
     group.add(tsFront);
 
     const tsRear = new THREE.Mesh(tsGeo.clone(), tsMat);
-    tsRear.position.set(side * CONFIG.carWidth * 0.48, CONFIG.carBodyHeight * 0.6, -CONFIG.carLength / 2 - 0.02);
+    tsRear.position.set(side * width * 0.48, bodyHeight * 0.6, -length / 2 - 0.02);
     group.add(tsRear);
     turnSignalMats.push(tsMat); // index 0 = left (-1), index 1 = right (+1)
   }
@@ -1956,7 +2005,8 @@ function createCarModel(color) {
 // ============================================================
 function createPlayerCar(spawn = { lane: laneDefs[0], progress: 50 }) {
   const lane = spawn.lane;
-  const { group: mesh, taillightMats, headlightMats, headlightGlowMats } = createCarModel(CONFIG.playerColor);
+  const playerType = { id: 'sedan', ...VEHICLE_TYPES.sedan };
+  const { group: mesh, taillightMats, headlightMats, headlightGlowMats } = createCarModel(CONFIG.playerColor, playerType);
 
   const car = {
     id: carIdCounter++,
@@ -1965,9 +2015,10 @@ function createPlayerCar(spawn = { lane: laneDefs[0], progress: 50 }) {
     progress: spawn.progress,
     speed: 0,
     targetSpeed: CONFIG.playerMaxSpeed,
-    length: CONFIG.carLength,
-    width: CONFIG.carWidth,
+    length: playerType.length,
+    width: playerType.width,
     color: CONFIG.playerColor,
+    vehicleType: playerType.id,
     prevSpeed: 0,
     brakeIntensity: 0,
     taillightMats: taillightMats,
@@ -2254,11 +2305,12 @@ let spawnTimer = 0;
 function spawnCar() {
   const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
 
+  const vehicleType = pickVehicleType();
   const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
-  const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color);
+  const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color, vehicleType);
 
   const difficulty = getDifficultyState();
-  const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+  const targetSpeed = (CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed)) * vehicleType.speedMultiplier;
 
   // Start slightly past 0 with randomness to avoid collisions at spawn
   const startProgress = 1 + Math.random() * 8;
@@ -2270,9 +2322,10 @@ function spawnCar() {
     progress: startProgress,
     speed: targetSpeed * 0.3,
     targetSpeed: targetSpeed,
-    length: CONFIG.carLength,
-    width: CONFIG.carWidth,
+    length: vehicleType.length,
+    width: vehicleType.width,
     color: color,
+    vehicleType: vehicleType.id,
     stopped: false,
     prevSpeed: 0,
     brakeIntensity: 0,
@@ -2297,7 +2350,7 @@ function spawnCar() {
     let dist = Math.abs(other.progress - startProgress);
     // Also check across the wrap boundary
     if (dist > lane.length * 0.5) dist = lane.length - dist;
-    if (dist < car.length * 2.5) {
+    if (dist < Math.max(car.length, other.length) * 2.5) {
       blocked = true;
       break;
     }
@@ -3153,10 +3206,11 @@ function animate(time) {
 function spawnInitialCars(count) {
   for (let i = 0; i < count; i++) {
     const lane = laneDefs[Math.floor(Math.random() * laneDefs.length)];
+    const vehicleType = pickVehicleType();
     const color = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
-    const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color);
+    const { group: mesh, taillightMats, turnSignalMats, headlightMats, headlightGlowMats } = createCarModel(color, vehicleType);
     const difficulty = getDifficultyState();
-    const targetSpeed = CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed);
+    const targetSpeed = (CONFIG.carMinSpeed + difficulty.aiSpeedBonus + Math.random() * (CONFIG.carMaxSpeed - CONFIG.carMinSpeed)) * vehicleType.speedMultiplier;
 
     // Random starting position spread across the lane
     const startProgress = 10 + Math.random() * (lane.length * 0.85);
@@ -3168,9 +3222,10 @@ function spawnInitialCars(count) {
       progress: startProgress,
       speed: targetSpeed * (0.3 + Math.random() * 0.7),
       targetSpeed: targetSpeed,
-      length: CONFIG.carLength,
-      width: CONFIG.carWidth,
+      length: vehicleType.length,
+      width: vehicleType.width,
       color: color,
+      vehicleType: vehicleType.id,
       stopped: false,
       prevSpeed: targetSpeed * 0.5,
       brakeIntensity: 0,

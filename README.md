@@ -39,7 +39,7 @@ Orientation: landscape recommended for the best field of view.
 ## 🚗 Features
 
 - **Curved scenic highway** — trees, mountains, wildflowers, guardrails, and rolling hills
-- **AI traffic** — cars speed up, slow down, change lanes, and create braking shockwaves
+- **Mixed AI traffic** — compact cars, sedans, SUVs, sports cars, vans, and trucks speed up, slow down, change lanes, and create braking shockwaves
 - **Dynamic difficulty** — traffic intensity ramps smoothly over 3 minutes across 10 visible levels
 - **Adaptive lighting** — headlights and brake lights brighten naturally after sunset
 - **Two camera modes**: Third-person FPV chase cam & top-down orbital view
