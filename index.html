@@ -690,6 +690,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createWorldBasis } from './modules/math/WorldBasis.js';
+import { CrashFire } from './modules/world/visual-effects/CrashFire.js';
 
 // The highway uses +X as its forward route direction, +Z as right, and +Y as up.
 const WORLD_BASIS = createWorldBasis({ right: '+z', up: '+y', forward: '+x' });
@@ -1234,6 +1235,7 @@ let engineOsc = null, engineGain = null, engineFilter = null;
 let hornTimer = 0;
 let fireGroup = null;
 let gameOverAngle = 0;
+let crashFrameElapsed = 0;
 
 function ensureAudio() {
   if (!audioCtx) {
@@ -2731,9 +2733,23 @@ function disposeObject3D(object) {
 
 function removeFire() {
   if (!fireGroup) return;
-  scene.remove(fireGroup);
-  disposeObject3D(fireGroup);
+  fireGroup.dispose();
   fireGroup = null;
+  renderer.shadowMap.autoUpdate = true;
+  renderer.shadowMap.needsUpdate = true;
+}
+
+function updateCrashScene(dt) {
+  if (!fireGroup || !playerCar) return;
+  fireGroup.update(dt);
+  gameOverAngle += dt * 0.6;
+  const firePos = fireGroup.position;
+  camera.position.set(
+    firePos.x + Math.cos(gameOverAngle) * 6,
+    firePos.y + 2.5 + Math.sin(gameOverAngle * 0.7) * 1.5,
+    firePos.z + Math.sin(gameOverAngle) * 6
+  );
+  camera.lookAt(firePos);
 }
 
 function clearTrafficNearSpawn(spawn) {
@@ -2813,36 +2829,12 @@ function triggerGameOver() {
   requestAnimationFrame(() => { flash.style.opacity = '0'; });
   setTimeout(() => flash.remove(), 500);
 
-  // Car on fire — glow the body + create flame particles
-  playerCar.mesh.traverse(child => {
-    if (child.isMesh && child.material && child.material.emissive) {
-      child.material.emissive.set(0xff4400);
-      child.material.emissiveIntensity = 0.7;
-    }
-  });
-
-  fireGroup = new THREE.Group();
-  const firePos = playerCar.mesh.position.clone();
-  firePos.y += 1.0;
-  fireGroup.position.copy(firePos);
-  const flameColors = [0xff2200, 0xff6600, 0xffaa00, 0xffcc00];
-  for (let i = 0; i < 14; i++) {
-    const geom = new THREE.ConeGeometry(0.3 + Math.random() * 0.4, 0.6 + Math.random() * 1.2, 8);
-    const mat = new THREE.MeshStandardMaterial({
-      color: flameColors[Math.floor(Math.random() * flameColors.length)],
-      emissive: flameColors[Math.floor(Math.random() * flameColors.length)],
-      emissiveIntensity: 1.2,
-      roughness: 0.2,
-      transparent: true,
-      opacity: 0.9,
-    });
-    const flame = new THREE.Mesh(geom, mat);
-    flame.position.set((Math.random() - 0.5) * 1.5, Math.random() * 0.8, (Math.random() - 0.5) * 2.0);
-    flame.userData = { baseY: flame.position.y, speed: 0.4 + Math.random() * 0.8, phase: Math.random() * Math.PI * 2 };
-    fireGroup.add(flame);
-  }
-  console.log('🔥 Fire at', fireGroup.position.toArray().map(v => v.toFixed(1)));
+  removeFire();
+  fireGroup = new CrashFire(playerCar, WORLD_BASIS, { mobile: isMobile });
   scene.add(fireGroup);
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+  crashFrameElapsed = 0;
 
   // Manual cinematic orbit — disable controls, fly camera ourselves
   controls.enabled = false;
@@ -3195,43 +3187,25 @@ window.addEventListener('resize', () => {
 let lastTime = 0;
 
 function animate(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
   if (mobileOnboardingActive) {
-    lastTime = time;
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
     return;
   }
 
   if (gameOver) {
-    // Animate fire
-    const dt = 0.016; // ~60fps approximation for orbit
-    if (fireGroup && playerCar) {
-      fireGroup.position.copy(playerCar.mesh.position);
-      fireGroup.position.y += 1.0;
-      const firePos = fireGroup.position;
-      // Manual orbit — camera circles the burning car
-      gameOverAngle += dt * 0.6;
-      const orbitDist = 6;
-      const camX = firePos.x + Math.cos(gameOverAngle) * orbitDist;
-      const camZ = firePos.z + Math.sin(gameOverAngle) * orbitDist;
-      const camY = firePos.y + 2.5 + Math.sin(gameOverAngle * 0.7) * 1.5;
-      camera.position.set(camX, camY, camZ);
-      camera.lookAt(firePos);
-      const t = time * 0.001;
-      fireGroup.children.forEach(flame => {
-        const u = flame.userData;
-        flame.position.y = u.baseY + Math.sin(t * u.speed * 3 + u.phase) * 0.3;
-        flame.scale.setScalar(0.7 + Math.sin(t * u.speed * 5 + u.phase) * 0.3);
-        flame.material.opacity = 0.5 + Math.sin(t * u.speed * 4 + u.phase + 1) * 0.3;
-      });
+    crashFrameElapsed += dt;
+    if (crashFrameElapsed >= 1 / 30 - 0.0001) {
+      updateCrashScene(crashFrameElapsed);
+      crashFrameElapsed = 0;
+      renderer.render(scene, camera);
     }
-    renderer.render(scene, camera);
     requestAnimationFrame(animate);
     return;
   }
 
-  const dt = Math.min((time - lastTime) / 1000, 0.05);
-  lastTime = time;
   if (!gameOver && timerStarted) gameTime += dt;
   updateTimeOfDay(dt);
   updatePortals(time);
@@ -3250,19 +3224,7 @@ function animate(time) {
   // Update player
   updatePlayer(dt);
   if (gameOver) {
-    if (fireGroup && playerCar) {
-      fireGroup.position.copy(playerCar.mesh.position);
-      fireGroup.position.y += 1.0;
-      const firePos = fireGroup.position;
-      gameOverAngle += dt * 0.6;
-      const orbitDist = 6;
-      camera.position.set(
-        firePos.x + Math.cos(gameOverAngle) * orbitDist,
-        firePos.y + 2.5 + Math.sin(gameOverAngle * 0.7) * 1.5,
-        firePos.z + Math.sin(gameOverAngle) * orbitDist
-      );
-      camera.lookAt(firePos);
-    }
+    updateCrashScene(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
     return;
